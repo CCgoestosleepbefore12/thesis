@@ -1,0 +1,107 @@
+% Chapter 6: Simulation Experiments and Analysis
+
+\chapter{Simulation Experiments and Analysis}\label{ch:experiments}
+
+\section{Experimental Setup}\label{sec:exp_setup}
+
+% Environment: PandaPickCube in MuJoCo
+% Robot: 7-DOF Franka Panda, OSC control at 10Hz, physics at 500Hz
+% Task: grasp cube and lift 20cm
+% Evaluation: 50 episodes per bias value, report success rate
+% Training: SAC, batch=256, utd=2, 100K online steps, 50 demo episodes
+
+\section{Encoder Bias Degradation (H1)}\label{sec:exp_h1}
+
+% Hypothesis: encoder bias degrades unbiased policy performance
+%
+% Experiment: train no-bias policy (18D), evaluate at bias 0.0 to 0.3 rad
+%
+% Results table:
+% | Bias (rad) | Success Rate | Avg Steps |
+% |------------|-------------|-----------|
+% | 0.00       | 100%        | 13.5      |
+% | 0.05       | 100%        | 13.5      |
+% | 0.10       | 80%         | 55.9      |
+% | 0.15       | 62%         | 62.5      |
+% | 0.20       | 51%         | 99.8      |
+% | 0.25       | 5%          | 184.5     |
+% | 0.30       | 0%          | 191.1     |
+%
+% Figure: degradation curve (success rate vs bias)
+% Analysis: >0.1 rad causes severe degradation, >0.25 near-total failure
+
+\section{Fixed-Bias Policy (H2)}\label{sec:exp_h2}
+
+% Hypothesis: policy trained on single fixed bias overfits
+%
+% Experiment: train on fixed b=0.2 rad (24D), evaluate across range
+%
+% Results: 100% at training bias, but 83% at zero bias (overcompensation)
+%
+% POMDP interpretation: policy learned b=0.2 conditional strategy,
+% not a general b-adaptive strategy
+
+\section{Random-Bias Policy (H3)}\label{sec:exp_h3}
+
+% Core experiment: train on b ~ U[0, 0.25] rad (24D)
+%
+% Three-policy comparison table:
+% | Bias | No-Bias | Fixed-Bias | Random-Bias |
+% |------|---------|------------|-------------|
+% | 0.00 | 100%    | 83%        | 92%         |
+% | 0.05 | 100%    | 87%        | 100%        |
+% | 0.10 | 80%     | 99%        | 99%         |
+% | 0.15 | 62%     | 100%       | 96%         |
+% | 0.20 | 51%     | 100%       | 97%         |
+% | 0.25 | 5%      | 100%       | 96%         |
+% | 0.30 | 0%      | 99%        | 99%         |
+%
+% Figure: three-policy comparison plot
+%
+% Key findings:
+% 1. Balanced robustness: 92-100% across entire range
+% 2. Beyond-range generalization: 99% at 0.30 rad (training max = 0.25)
+% 3. No overcompensation: 92% at zero bias (vs 83% for fixed-bias)
+% 4. Single unified policy handles arbitrary bias
+
+\section{Observation Space Ablation}\label{sec:exp_ablation}
+
+% Validates observability analysis from Section 3.4
+%
+% | Observation | Dim | Key Missing Signal | Result   | Theory Prediction |
+% |-------------|-----|-------------------|----------|-------------------|
+% | 18D         | 18  | real_tcp + block  | 42% avg  | Unidentifiable    |
+% | 21D         | 21  | real_tcp          | Training fails | Know goal, not self |
+% | 24D         | 24  | (complete)        | 92-100%  | Approximately identifiable |
+%
+% Direct correspondence between theory (Ch.3.4) and experiment:
+% - 18D fails because single-step obs cannot distinguish different b
+% - 21D fails because knowing target without knowing true position is useless
+% - 24D succeeds because Delta_x = real_tcp - biased_tcp provides b signal
+
+\section{Backup Policy Experiments}\label{sec:exp_backup}
+
+% S1 (single obstacle) results:
+% - 200-step survival rate
+% - Training curves
+%
+% S2 (moving + static) results:
+% - Comparison with S1
+%
+% Reward V1 vs V2 vs V3:
+% - Training curves showing V1/V2 failure modes
+% - V3 convergence
+%
+% DR ablation:
+% - With DR vs without DR
+% - Performance under different noise levels
+%
+% Motion mode robustness:
+% - Per-mode evaluation (LINEAR, ARC, STOP_GO, PASSING)
+
+\section{Integrated System Evaluation}\label{sec:exp_integrated}
+
+% Task Policy + Backup Policy switching:
+% - Scenario: pick cube task with periodic hand intrusion
+% - Metrics: task success rate, collision rate, recovery rate
+% - Demonstrate seamless policy switching

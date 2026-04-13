@@ -1,0 +1,37 @@
+% Chapter 1: Introduction
+
+\chapter{Introduction}\label{ch:introduction}
+
+\section{Background and Motivation}\label{sec:background}
+
+% Industrial robots and encoder faults
+% - 5 sources of encoder bias (factory calibration, temperature drift, replacement, collision, EMI)
+% - Current approach: stop and recalibrate -> costly downtime
+% - Need: online adaptation without stopping production
+
+\section{Problem Statement}\label{sec:problem_statement}
+
+% Core insight: encoder bias degrades the control problem from MDP to POMDP
+% - Single fault source -> three simultaneous effects (init offset, control bias, perception bias)
+% - Agent cannot observe true joint angles -> partially observable
+% - Additional challenge: human safety during HIL training
+
+\section{Contributions}\label{sec:contributions}
+
+% Three main contributions:
+% 1. POMDP formalization of encoder bias + observability analysis
+%    -> shows why external position signal is necessary
+% 2. Observation-augmented robust task policy via RLPD + randomized bias training
+%    -> 92-100% success across [0, 0.3] rad
+% 3. Backup safety policy for HIL training
+%    -> reward design (V1->V2->V3 evolution), DR for sim-to-real
+
+\section{Thesis Organization}\label{sec:organization}
+
+% Chapter 2: Related work
+% Chapter 3: Encoder bias modeling + POMDP formalization
+% Chapter 4: Observation-augmented robust task policy design
+% Chapter 5: Backup safety policy for HIL training
+% Chapter 6: Simulation experiments and analysis
+% Chapter 7: Real robot deployment and validation
+% Chapter 8: Conclusion and future work

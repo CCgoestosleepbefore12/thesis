@@ -1,0 +1,70 @@
+% Chapter 7: Real Robot Deployment and Validation
+
+\chapter{Real Robot Deployment and Validation}\label{ch:real_robot}
+
+\section{Hardware Architecture}\label{sec:hardware}
+
+% Dual-machine setup:
+% - RT PC (laptop): Ubuntu 20.04, PREEMPT_RT kernel, libfranka 0.9.1, Flask server
+% - GPU Workstation: RTX 3090 Ti, Actor + Learner, gRPC
+% - Communication: HTTP POST (RT PC <-> GPU), direct Ethernet (RT PC <-> Franka)
+%
+% Figure: system architecture diagram
+
+\section{Fault Injection on Real Hardware}\label{sec:real_fault_injection}
+
+% Why /joint_states injection is ineffective in hil-serl:
+% - Controller reads FrankaStateHandle (C++ memory), not ROS topics
+% - Flask reads FrankaState, not /joint_states
+%
+% Dual injection point scheme (B+D):
+%
+% Point B: C++ impedance controller
+%   - Read bias from ROS param /encoder_bias
+%   - q_biased = q_true + bias before Jacobian computation
+%   - Effect: control deviation (same as sim OSC bias)
+%
+% Point D: Flask franka_server.py
+%   - Read same /encoder_bias parameter
+%   - Return q_biased and FK(q_biased) in HTTP response
+%   - Effect: perception deviation (same as sim get_robot_state bias)
+%
+% Shared parameter via ROS Parameter Server:
+%   rosparam set /encoder_bias "[0, 0, 0, 0.15, 0, 0, 0]"
+
+\section{OSC vs Impedance Control Equivalence}\label{sec:control_equivalence}
+
+% Both follow: q -> J(q) -> Cartesian force -> J^T -> joint torque
+%
+% OSC (simulation):
+%   tau = J^T * Lambda * (Kp*e + Kd*de) + nullspace + gravity
+%   Lambda = (J * M^{-1} * J^T)^{-1}  (task-space inertia)
+%
+% Impedance (real robot):
+%   tau = J^T * (Kp*e + Kd*de) + nullspace + coriolis
+%   No Lambda (no inertia decoupling)
+%
+% Bias affects both through the SAME path: q -> J(q+b)
+% Difference: Lambda introduces additional inertia compensation error in sim
+% -> Real robot bias effects may differ in magnitude but not in direction
+% -> Simulation is conservative (idealized)
+
+\section{External Localization}\label{sec:external_localization}
+
+% Options: OptiTrack (<1mm), ArUco markers (~5mm), RGBD (~1-2cm)
+% Selected: ArUco + D455 -> ~5mm accuracy
+% Matches simulation noise assumption (N(0, 5mm))
+
+\section{Experimental Results}\label{sec:real_results}
+
+% TODO: fill in after real-robot experiments
+%
+% 7.5.1 Sim-to-real bias fidelity
+%   - Same bias value -> compare TCP offset in sim vs real
+%
+% 7.5.2 Task policy transfer
+%   - Zero-shot / few-shot performance of sim-trained policy
+%
+% 7.5.3 Backup policy transfer
+%   - MediaPipe hand detection + D455 depth
+%   - Collision avoidance evaluation

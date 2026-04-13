@@ -1,0 +1,159 @@
+% !TeX spellcheck = en_US
+%Ermöglicht \\ bei der Titelseite (z.B. bei supervisor)
+%Siehe https://github.com/latextemplates/uni-stuttgart-cs-cover/issues/4
+\RequirePackage{kvoptions-patch}
+
+%English:
+\let\ifdeutsch\iffalse
+\let\ifenglisch\iftrue
+
+%German:
+%\let\ifdeutsch\iftrue
+%\let\ifenglisch\iffalse
+
+%
+\ifenglisch
+	\PassOptionsToClass{numbers=noenddot}{scrbook}
+\else
+	\PassOptionsToClass{numbers=autoendperiod}{scrbook}
+\fi
+
+%Warns about outdated packages and missing caption delcarations
+\RequirePackage[l2tabu, orthodox]{nag}
+
+\RequirePackage{ifluatex}
+\ifluatex
+\else
+	\ifdeutsch
+		\RequirePackage[ngerman=ngerman-x-latest]{hyphsubst}
+	\fi
+\fi
+
+\documentclass[
+               fontsize=12pt,
+               paper=a4,
+               twoside,
+               BCOR=3mm,
+               DIV=13,
+               headinclude=true,
+               footinclude=false,
+               bibliography=totoc,
+               headsepline,
+               cleardoublepage=empty,
+               parskip=half,
+               final
+               ]{scrbook}
+
+
+\input{preambel/packages_and_options}
+
+\raggedbottom
+
+% TOC depth: 0=chapter, 1=section, 2=subsection
+\setcounter{tocdepth}{2}
+
+\makeindex
+
+%PDF metadata
+\makeatletter
+\hypersetup{
+            pdftitle={Fault-Resilient Robot Manipulation via Online Reinforcement Learning under Encoder Calibration Bias},
+            pdfauthor={Cheng Cheng},
+            pdfkeywords={POMDP, reinforcement learning, fault tolerance, encoder bias, robot manipulation},
+            pdfsubject={Master Thesis}
+}
+\makeatother
+
+\input{content/abkuerzungen}
+
+\begin{document}
+
+\iftex4ht
+\Configure{$}{\PicMath}{\EndPicMath}{}
+%$
+\Css{body {text-align:justify;}}
+\Configure{graphics*}
+         {pdf}
+         {\Needs{"convert \csname Gin@base\endcsname.pdf
+                               \csname Gin@base\endcsname.png"}%
+          \Picture[pict]{\csname Gin@base\endcsname.png}%
+         }
+\fi
+
+\input glyphtounicode.tex
+\pdfgentounicode=1
+
+\input{macros/commands}
+\pagenumbering{arabic}
+\Titelblatt
+
+%Eigener Seitenstil fuer die Kurzfassung und das Inhaltsverzeichnis
+\deftripstyle{preamble}{}{}{}{}{}{\pagemark}
+\pagestyle{preamble}
+\renewcommand*{\chapterpagestyle}{preamble}
+
+% Abstract
+\section*{Abstract}
+\input{content/abstract}
+\cleardoublepage
+
+
+% BEGIN: Verzeichnisse
+\iftex4ht
+\else
+\microtypesetup{protrusion=false}
+\fi
+
+\tableofcontents
+
+\listoffigures
+\listoftables
+
+\ifdeutsch
+\listof{Listing}{Verzeichnis der Listings}
+\else
+\listof{Listing}{List of Listings}
+\fi
+
+\ifdeutsch
+\listof{Algorithmus}{Verzeichnis der Algorithmen}
+\else
+\listof{Algorithmus}{List of Algorithms}
+\fi
+
+\printnoidxglossaries
+
+\iftex4ht
+\else
+\microtypesetup{protrusion=true}
+\fi
+% END: Verzeichnisse
+
+
+\renewcommand*{\chapterpagestyle}{scrplain}
+\pagestyle{scrheadings}
+\input{preambel/pagestyle}
+
+%
+% ** Thesis chapters **
+%
+\input{content/ch1_introduction}
+\input{content/ch2_related_work}
+\input{content/ch3_problem_formulation}
+\input{content/ch4_robust_task_policy}
+\input{content/ch5_backup_policy}
+\input{content/ch6_experiments}
+\input{content/ch7_real_robot}
+\input{content/ch8_conclusion}
+
+\appendix
+% \input{content/appendix}
+
+\clearpage
+
+\printbibliography
+
+\pagestyle{empty}
+\renewcommand*{\chapterpagestyle}{empty}
+\Versicherung
+\end{document}

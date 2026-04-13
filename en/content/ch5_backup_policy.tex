@@ -1,0 +1,109 @@
+% Chapter 5: Backup Collision-Avoidance Policy via Sim-Only Training with Domain Randomization
+
+\chapter{Backup Collision-Avoidance Policy via Sim-Only Training with Domain Randomization}\label{ch:backup_policy}
+
+\section{Problem Definition}\label{sec:backup_problem}
+
+% During HIL training, human hand enters workspace to provide demonstrations
+% -> Need active collision avoidance
+% -> Task policy freezes, backup policy takes over
+% -> After hand leaves, return control to task policy
+%
+% Requirements:
+% - Avoid collision with moving hand
+% - Minimize displacement from current position (stay in place)
+% - Maintain block grasp (don't drop)
+% - Respect workspace constraints (Zone C forbidden)
+
+\section{Scenario Design}\label{sec:scenarios}
+
+% S1: Single moving obstacle (28D x 3 frames = 84D)
+%   - 1 moving hand, 4 motion modes
+%
+% S2: Moving + static obstacle (38D x 3 frames = 114D)
+%   - 1 moving hand + 1 static obstacle
+%
+% Observation per obstacle (10D):
+%   [active, pos(3), vel(3), rel_pos_to_tcp(3)]
+%
+% Frame stacking (3 frames): provides temporal information for
+%   velocity estimation and motion prediction
+
+\section{Obstacle Motion Modes}\label{sec:motion_modes}
+
+% 4 modes simulating different human hand approach patterns:
+%
+% LINEAR: constant velocity toward TCP
+%   - Simplest, baseline threat model
+%
+% ARC: curved approach with per-step direction rotation
+%   - Simulates reaching around obstacles
+%
+% STOP_GO: toward TCP with random pauses (30% stop probability)
+%   - Simulates hesitant human movements
+%
+% PASSING: perpendicular to TCP direction, faster (1.3x)
+%   - Simulates hand passing through workspace without targeting robot
+%
+% Random mode selection per episode -> policy must handle all patterns
+
+\section{Reward Function Design}\label{sec:backup_reward}
+
+% Evolution from V1 to V3 -- each failure taught a design principle
+%
+% V1: Proximity reward (move away from hand)
+%   r = -collision + distance_bonus
+%   FAILURE: policy learned to flee far away, violating "stay in place"
+%   LESSON: reward must align with deployment objective
+%
+% V2: All-negative reward
+%   r = -displacement - action_norm - action_smooth
+%   FAILURE: "dying quickly < dying slowly"
+%     10 steps of accumulating negative reward > instant collision penalty
+%   LESSON: survival must always be better than termination
+%
+% V3: Non-negative immediate + large termination penalty (Kiemel et al. 2024)
+%   Per-step (always >= 0):
+%     r = 0.5 - 0.5*||displacement|| - 0.01*||action|| - 0.01*||action_diff||
+%   Termination (collision / drop / zone_c / displacement>15cm):
+%     r = -10.0
+%   Completion bonus: +5.0
+%   Discount: 1.0
+%
+%   Expected returns:
+%     Perfect stillness: +10.0
+%     Small dodge (5cm): +9.7
+%     Large dodge (12cm): +8.5
+%     Collision: -10.0
+%
+%   Design principles:
+%   1. Immediate rewards must be non-negative
+%   2. Termination penalty >> total survival reward
+%   3. Displacement needs hard constraint, not just soft penalty
+%   4. Short episodes need gamma=1.0
+
+\section{Domain Randomization for Sim-to-Real Transfer}\label{sec:dr}
+
+% Applied ONLY to observation layer, NOT to collision detection
+%
+% | Parameter          | Distribution      | Real-world source          |
+% |--------------------|-------------------|----------------------------|
+% | Position noise     | N(0, 0.03)        | MediaPipe + D455 accuracy  |
+% | Velocity noise     | N(0, 0.01)        | Frame differencing jitter  |
+% | Observation delay  | U(0, 2) steps     | Detection latency          |
+% | Obstacle speed     | U(0.005, 0.015)   | Different hand speeds      |
+% | TCP noise          | N(0, 0.005)       | External tracking noise    |
+%
+% Safety principle: collision detection uses TRUE positions
+% -> DR makes policy robust to noisy perception
+% -> but safety guarantees are not affected by DR
+
+\section{Sim-to-Real Alignment}\label{sec:sim2real_alignment}
+
+% Gap analysis: simulation vs real robot
+% - Hand position: MuJoCo ground truth vs MediaPipe + depth -> DR covers
+% - Hand velocity: difference vs frame difference -> DR covers
+% - Observation delay: 0 vs ~10ms -> DR covers
+% - Robot state: no gap (encoders)
+% - Controller: OSC vs impedance -> equivalent (see Ch.7)
+% - Hand motion: 4 modes vs real hand -> modes cover typical patterns

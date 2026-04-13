@@ -1,0 +1,42 @@
+% 第2章 相关工作
+
+\chapter{相关工作}\label{ch:related_work}
+
+\section{机器人容错控制}\label{sec:ftc}
+
+% 传统FDI/FTC（故障检测、隔离与重构）
+% - 基于模型的方法：解析冗余、观测器
+% - 数据驱动方法
+% - 局限：需要故障模型、常需停机、无法适应未知偏差
+% - 空白：尚无基于在线学习的编码器校准偏差适应方法
+
+\section{POMDP求解方法}\label{sec:pomdp_methods}
+
+% 精确方法：信念状态、PBVI、PERSEUS → 维度灾难
+% 近似方法：
+%   - RNN/GRU/LSTM隐式记忆 → 需要多步历史
+%   - 观测增强 → 本文方法
+%   - 隐参数域随机化 → 与本文偏差随机化相关
+% 本文定位：观测增强将POMDP近似还原为MDP
+
+\section{鲁棒强化学习}\label{sec:robust_rl}
+
+% 鲁棒MDP / 对抗RL
+% 域随机化在sim-to-real中的应用
+%   - OpenAI：魔方 + DR
+%   - Tobin et al.：视觉迁移的DR
+% 本文：偏差随机化作为对隐变量的定向DR
+
+\section{人在回路强化学习}\label{sec:hil_rl}
+
+% 交互式模仿学习：DAgger
+% RLPD (Ball et al.)：离线演示 + 在线交互
+% HIL-SERL (Luo et al.)：真机RL的人类干预
+% 本文训练框架：RLPD + 键盘干预
+
+\section{安全强化学习与避障}\label{sec:safe_rl}
+
+% 约束MDP / 安全RL
+% Kiemel et al. 2024：安全RL中的非负即时奖励
+% 分层RL中的备份/恢复策略
+% 本文备份策略：HIL训练中的主动避障

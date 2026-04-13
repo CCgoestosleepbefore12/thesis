@@ -1,0 +1,11 @@
+% Abstract
+
+Encoder calibration bias in industrial robots introduces a systematic error that simultaneously corrupts both the control loop (via incorrect Jacobian computation) and the state observation (via incorrect forward kinematics), degrading the robot from a fully observable Markov Decision Process (MDP) to a Partially Observable MDP (POMDP). This thesis addresses the challenge of maintaining robust manipulation performance under unknown encoder bias without requiring downtime for recalibration.
+
+We first formalize the encoder bias problem as a POMDP, where the bias vector acts as an episode-level latent variable that renders the true joint state unobservable. Through observability analysis, we show that standard proprioceptive observations are insufficient to distinguish different bias conditions, and that augmenting the observation with an external end-effector position signal restores approximate observability---effectively reducing the POMDP back to an MDP that can be solved with standard reinforcement learning algorithms.
+
+Building on this insight, we propose a two-component system: (1)~a \emph{robust task policy} trained with Reinforcement Learning from Prior Data (RLPD) under randomized encoder bias, which achieves 92--100\% success rate across the full bias range $[0, 0.3]$\,rad on a simulated pick-and-place task; and (2)~a \emph{backup safety policy} that protects human operators during human-in-the-loop training by performing active collision avoidance when a hand enters the shared workspace. Domain randomization on the backup policy bridges the sim-to-real gap for noisy hand detection.
+
+Ablation studies confirm that the external position signal is necessary for bias-robust performance, validating the theoretical observability analysis. We further present a real-robot deployment architecture for the Franka Panda, including a dual-injection-point fault injection scheme that faithfully reproduces the encoder bias causal chain on physical hardware.
+
+% TODO: update with real-robot results when available

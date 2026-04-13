@@ -1,0 +1,84 @@
+\@writefile{toc}{\babel@toc {american}{}\relax }
+\@writefile{lof}{\babel@toc {american}{}\relax }
+\@writefile{lot}{\babel@toc {american}{}\relax }
+\@writefile{lol}{\babel@toc {american}{}\relax }
+\@writefile{toc}{\contentsline {chapter}{\numberline {1}Introduction}{15}{chapter.1}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {1.1}Background and Motivation}{15}{section.1.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1.2}Problem Statement}{15}{section.1.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1.3}Contributions}{15}{section.1.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {1.4}Thesis Organization}{15}{section.1.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {2}Related Work}{17}{chapter.2}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {2.1}Fault-Tolerant Robot Control}{17}{section.2.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2.2}POMDP Solution Methods}{17}{section.2.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2.3}Robust Reinforcement Learning}{17}{section.2.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2.4}Human-in-the-Loop Reinforcement Learning}{17}{section.2.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {2.5}Safe Reinforcement Learning and Collision Avoidance}{17}{section.2.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {3}Encoder Bias Modeling and POMDP Formulation}{19}{chapter.3}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {3.1}Encoder Calibration Bias in Industrial Robots}{19}{section.3.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.2}Causal Chain: One Fault Source, Three Effects}{19}{section.3.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.3}POMDP Formalization}{19}{section.3.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.4}Observability Analysis}{19}{section.3.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.5}Comparison with Alternative POMDP Solutions}{19}{section.3.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {3.6}Simulation Implementation}{19}{section.3.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {4}Observation-Augmented Robust Task Policy}{21}{chapter.4}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {4.1}Observation Space Design}{21}{section.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.2}Randomized Bias Training}{21}{section.4.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.3}RLPD Training Framework}{21}{section.4.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.4}Network Architecture}{21}{section.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {4.5}Reward Design}{21}{section.4.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {5}Backup Safety Policy for Human-in-the-Loop Training}{23}{chapter.5}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {5.1}Problem Definition}{23}{section.5.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.2}Scenario Design}{23}{section.5.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.3}Obstacle Motion Modes}{23}{section.5.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.4}Reward Function Design}{23}{section.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.5}Domain Randomization for Sim-to-Real Transfer}{23}{section.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {5.6}Sim-to-Real Alignment}{23}{section.5.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {6}Simulation Experiments and Analysis}{25}{chapter.6}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {6.1}Experimental Setup}{25}{section.6.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.2}Encoder Bias Degradation (H1)}{25}{section.6.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.3}Fixed-Bias Policy (H2)}{25}{section.6.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.4}Random-Bias Policy (H3)}{25}{section.6.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.5}Observation Space Ablation}{25}{section.6.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.6}Backup Policy Experiments}{25}{section.6.6}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6.7}Integrated System Evaluation}{25}{section.6.7}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {7}Real Robot Deployment and Validation}{27}{chapter.7}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {7.1}Hardware Architecture}{27}{section.7.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7.2}Fault Injection on Real Hardware}{27}{section.7.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7.3}OSC vs Impedance Control Equivalence}{27}{section.7.3}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7.4}External Localization}{27}{section.7.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {7.5}Experimental Results}{27}{section.7.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {chapter}{\numberline {8}Conclusion and Future Work}{29}{chapter.8}\protected@file@percent }
+\@writefile{lof}{\addvspace {10\p@ }}
+\@writefile{lot}{\addvspace {10\p@ }}
+\@writefile{lol}{\addvspace {10\p@ }}
+\@writefile{toc}{\contentsline {section}{\numberline {8.1}Summary}{29}{section.8.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8.2}Limitations}{29}{section.8.2}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {8.3}Future Work}{29}{section.8.3}\protected@file@percent }
+\@writefile{toc}{\def \@chapapp {\appendixname }}
+\@writefile{lof}{\def \@chapapp {\appendixname }}
+\@writefile{lot}{\def \@chapapp {\appendixname }}
+\@writefile{lol}{\def \@chapapp {\appendixname }}
+\@writefile{toc}{\providecommand \tocbasic@end@toc@file {}\tocbasic@end@toc@file }
+\@writefile{lof}{\providecommand \tocbasic@end@toc@file {}\tocbasic@end@toc@file }
+\@writefile{lot}{\providecommand \tocbasic@end@toc@file {}\tocbasic@end@toc@file }

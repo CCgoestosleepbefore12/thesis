@@ -1,0 +1,70 @@
+% 第7章 真机部署与验证
+
+\chapter{真机部署与验证}\label{ch:real_robot}
+
+\section{硬件架构}\label{sec:hardware}
+
+% 双机架构：
+% - RT PC（笔记本）：Ubuntu 20.04, PREEMPT_RT内核, libfranka 0.9.1, Flask服务器
+% - GPU工作站：RTX 3090 Ti, Actor + Learner, gRPC
+% - 通信：HTTP POST (RT PC ↔ GPU), 直连以太网 (RT PC ↔ Franka)
+%
+% 图：系统架构图
+
+\section{真机故障注入方案}\label{sec:real_fault_injection}
+
+% 为什么 /joint_states 注入在hil-serl下无效：
+% - 控制器读FrankaStateHandle（C++内存），不读ROS话题
+% - Flask读FrankaState，不读/joint_states
+%
+% 双注入点方案（B+D）：
+%
+% 注入点B：C++阻抗控制器
+%   - 从ROS参数 /encoder_bias 读取偏差
+%   - Jacobian计算前：$\vect{q}_{\text{biased}} = \vect{q}_{\text{true}} + \vect{b}$
+%   - 效果：控制偏差（等价于仿真OSC偏差）
+%
+% 注入点D：Flask franka_server.py
+%   - 读取相同的 /encoder_bias 参数
+%   - HTTP响应中返回 $\vect{q}_{\text{biased}}$ 和 $\text{FK}(\vect{q}_{\text{biased}})$
+%   - 效果：感知偏差（等价于仿真get_robot_state偏差）
+%
+% 通过ROS参数服务器共享偏差：
+%   rosparam set /encoder_bias "[0, 0, 0, 0.15, 0, 0, 0]"
+
+\section{OSC与阻抗控制的等价性}\label{sec:control_equivalence}
+
+% 两者都遵循：$\vect{q} \to \mat{J}(\vect{q}) \to$ 笛卡尔力 $\to \mat{J}^T \to$ 关节力矩
+%
+% OSC（仿真）：
+%   $\vect{\tau} = \mat{J}^T \mat{\Lambda} (\mat{K}_p\vect{e} + \mat{K}_d\dot{\vect{e}}) + \text{零空间} + \text{重力}$
+%   $\mat{\Lambda} = (\mat{J} \mat{M}^{-1} \mat{J}^T)^{-1}$（任务空间惯性矩阵）
+%
+% 阻抗控制（真机）：
+%   $\vect{\tau} = \mat{J}^T (\mat{K}_p\vect{e} + \mat{K}_d\dot{\vect{e}}) + \text{零空间} + \text{科氏力}$
+%   无 $\mat{\Lambda}$（无惯性解耦）
+%
+% 偏差通过相同路径影响两者：$\vect{q} \to \mat{J}(\vect{q}+\vect{b})$
+% 差异：$\mat{\Lambda}$ 在仿真中引入额外的惯性补偿误差
+% → 真机偏差效应幅度可能不同，但方向一致
+% → 仿真是保守的（理想化）
+
+\section{外部定位方案}\label{sec:external_localization}
+
+% 选项：OptiTrack (<1mm), ArUco标记 (~5mm), RGBD (~1-2cm)
+% 选择：ArUco + D455 → ~5mm精度
+% 与仿真噪声假设一致 ($\mathcal{N}(0, 5\text{mm})$)
+
+\section{实验结果}\label{sec:real_results}
+
+% TODO: 真机实验完成后填写
+%
+% 7.5.1 仿真-真机偏差保真度
+%   - 相同偏差值 → 对比仿真和真机的TCP偏移量
+%
+% 7.5.2 任务策略迁移
+%   - 仿真训练策略的零样本/少样本性能
+%
+% 7.5.3 备份策略迁移
+%   - MediaPipe手部检测 + D455深度
+%   - 避碰评估
