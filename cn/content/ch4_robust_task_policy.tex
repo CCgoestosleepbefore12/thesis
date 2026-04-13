@@ -10,7 +10,9 @@
 
 \paragraph{设计选择二：随机偏差训练} \cref{subsec:identifiability_vs_solvability} 进一步指出，即便信息充分，最优策略仍然是\emph{以偏差为条件}的函数：对不同的 $\vect{b}$，$\pi^\star$ 必须输出不同的补偿动作（见\cref{eq:conditional_policy}）。若训练过程仅暴露单一固定 $\vect{b}$，策略只能在该点附近学到"单点条件化"——在偏差分布的其他位置（尤其是 $\vect{b}=\vect{0}$）会产生过补偿现象。因此本文第二个设计选择是\textbf{按 episode 从偏差分布 $P(\vect{b})$ 中随机采样进行训练}，让策略暴露于整个偏差分布。这一思路与 Tobin 等人在视觉 sim-to-real 中采用的域随机化~\cite{tobin2017domain} 在原则上同源——两者都是"训练时让策略见过未来部署环境的分布"。\cref{sec:random_bias} 将具体描述随机偏差训练，\cref{sec:exp_h2} 的固定偏差基线实验将给出单点条件化过补偿的直接实证。
 
-\paragraph{设计选择三：HIL + RLPD 真机训练} 前两个选择回答了"观测什么"和"训练什么分布"，但仍然留下执行层面的问题：\emph{在哪里训练}？本文的任务策略必须在\textbf{真机上}训练而非纯仿真 + 域随机化直接迁移，这出于两个现实约束。(i)~\textbf{视觉 sim-to-real gap}：任务策略的观测除了 24 维状态还包含双目 RGB 图像，由 ResNet 编码器处理~\cite{he2016deep}；仿真渲染图像与真实相机图像在纹理、光照与噪声分布上的差距难以仅通过 DR 覆盖（这一观察与\cref{ch:backup_policy} 备份策略可以纯仿真训练的情形形成对照，详见\cref{ch:backup_policy} 5.1 节与\cref{ch:related_work}）。(ii)~\textbf{稀疏奖励下的探索困难}：本文采用成功即 1、否则为 0 的稀疏奖励（见\cref{sec:task_reward}），策略难以从零开始探索出成功轨迹。为此本文采用 Ball 等人提出的 RLPD 框架~\cite{ball2023rlpd}：将 50 条人类演示 episode 放入离线缓冲区、与在线采集的数据混合采样，在 SAC 基础上提供稠密的引导信号。训练过程中进一步引入\emph{人在回路干预}——这一思路可追溯到 Ross 等人提出的 DAgger~\cite{ross2011dagger}：训练者通过遥操作设备介入失败轨迹，成功的干预被加入离线缓冲区形成与演示等同地位的监督信号。实验表明，在稀疏奖励与随机偏差的双重设定下，HIL 干预在\emph{仿真和真机上均是必要组成}——即便在仿真环境中，仅依靠 demo bootstrap + 纯 online SAC 也难以稳定收敛，需要人类干预持续提供纠错梯度（\cref{sec:exp_h1} 的残差 RL 对照实验将从另一个角度佐证这一点）。训练框架、网络架构与超参数分别见\cref{sec:rlpd,sec:network}，真机部署细节参见\cref{ch:real_robot}。
+\paragraph{设计选择三：HIL-SERL 真机训练} 前两个选择回答了"观测什么"和"训练什么分布"，但仍然留下执行层面的问题：\emph{在哪里训练}？本文的任务策略必须在\textbf{真机上}训练而非纯仿真 + 域随机化直接迁移，这出于两个现实约束。(i)~\textbf{视觉 sim-to-real gap}：任务策略的观测除了 24 维状态还包含双目 RGB 图像，由 ResNet 编码器处理~\cite{he2016deep}；仿真渲染图像与真实相机图像在纹理、光照与噪声分布上的差距难以仅通过 DR 覆盖（这一观察与\cref{ch:backup_policy} 备份策略可以纯仿真训练的情形形成对照，详见\cref{ch:backup_policy} 5.1 节与\cref{ch:related_work}）。(ii)~\textbf{稀疏奖励下的探索困难}：本文采用成功即 1、否则为 0 的稀疏奖励（见\cref{sec:task_reward}），策略难以从零开始探索出成功轨迹。
+
+为此本文采用 Luo 等人提出的 HIL-SERL 框架~\cite{luo2025hilserl}，其以 Ball 等人的 RLPD~\cite{ball2023rlpd} 为底层算法——将 50 条人类演示 episode 放入离线缓冲区、与在线采集的数据混合采样，在 SAC 基础上提供稠密的引导信号——并进一步把\emph{人在回路干预}作为持续的一等训练数据源；HIL 的思路可追溯到 Ross 等人提出的 DAgger~\cite{ross2011dagger}：训练者通过遥操作设备介入策略正在执行的 episode 以提供纠错动作，这些干预转移被追加到离线缓冲区形成与演示等同地位的监督信号。实验表明，在稀疏奖励与随机偏差的双重设定下，HIL 干预在\emph{仿真和真机上均是必要组成}——即便在仿真环境中，仅依靠 demo bootstrap $+$ 纯 online SAC 也难以稳定收敛，需要人类干预持续提供纠错梯度（\cref{sec:exp_h1} 的残差 RL 对照实验将从另一个角度佐证这一点）。训练框架、网络架构与超参数分别见\cref{sec:hilserl,sec:network}，真机部署细节参见\cref{ch:real_robot}。
 
 \paragraph{小结} 上述三个设计选择可以简明地映射为\cref{tab:method_mapping} 所示的"理论-约束-方法"对应关系。后续各节将按此顺序展开具体实现。
 
@@ -23,10 +25,10 @@
     \toprule
     来源 & 具体依据 & 方法设计 & 展开章节 \\
     \midrule
-    理论结论 & 命题~\ref{prop:identifiable}（可辨识性） & 观测空间增强（24D） & \cref{sec:obs_design} \\
+    理论结论 & \cref{prop:identifiable}（可辨识性） & 观测空间增强（24D） & \cref{sec:obs_design} \\
     理论结论 & \cref{subsec:identifiability_vs_solvability}（条件补偿） & 随机偏差训练 & \cref{sec:random_bias} \\
-    现实约束 & 视觉 sim-to-real gap & 真机训练 & \cref{sec:rlpd} \\
-    现实约束 & 稀疏奖励探索困难 & RLPD + HIL 干预 & \cref{sec:rlpd} \\
+    现实约束 & 视觉 sim-to-real gap & 真机训练 & \cref{sec:hilserl} \\
+    现实约束 & 稀疏奖励探索困难 & HIL-SERL 框架 & \cref{sec:hilserl} \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -109,56 +111,192 @@
 
 \section{随机偏差训练}\label{sec:random_bias}
 
-% 动机：将 $\vect{b}$ 视为环境参数 → 域随机化的一种形式
-% 训练时 $\vect{b} \sim U[0, b_{\max}]$ per episode，episode内恒定
-%
-% 与固定偏差训练的对比：
-% - 固定 $b=0.2$：过拟合到特定 $\vect{b}$ → 零偏差时过补偿
-% - 随机 $b \in [0, 0.25]$：学到 $\vect{b}$-条件策略 $\pi(\vect{a}|\vect{o}, \Delta\vect{x})$
-%
-% 与鲁棒RL的关系：
-% - 不是最坏情况（鲁棒MDP），而是偏差分布上的平均性能
-% - 随机化迫使策略利用 $\Delta\vect{x}$ 信号推断 $\vect{b}$
+\cref{subsec:identifiability_vs_solvability} 指出，即便观测空间已满足可辨识性条件，最优策略仍必须以偏差 $\vect{b}$ 为条件输出不同的补偿动作（\cref{eq:conditional_policy}）。若训练过程仅暴露策略于单一固定的 $\vect{b}_0$，策略至多能在该点附近学到"单点条件化"——一旦部署环境的真实偏差偏离 $\vect{b}_0$（尤其是回到 $\vect{b}=\vect{0}$ 的标定状态），策略将沿着训练时学到的补偿方向过度修正，产生\emph{过补偿}现象。本文通过按 episode 随机采样偏差来规避这一问题。
 
-\section{RLPD训练框架}\label{sec:rlpd}
+\paragraph{训练协议。}将偏差视为 episode 级环境参数：每次 reset 时为每个关节独立采样 $b_i \sim \mathcal{U}[0, b_{\max}]$（$i = 1, \dots, 7$），episode 内保持恒定直至下一次 reset；本文取 $b_{\max} = 0.25\,\text{rad}$（约 $14^\circ$），显著大于\cref{sec:bias_sources} 中综述的工业机器人典型偏差量级，用以对策略施加相对激进的压力测试。采样得到的 $\vect{b}$ 按\cref{sec:sim_implementation} 描述的故障注入方式作用于仿真环境内部的编码器读数与控制器参考值，\emph{不作为任何形式的额外输入}提供给策略——策略只能通过\cref{sec:obs_design} 定义的 24 维观测隐式感知偏差。
 
-% SAC（Soft Actor-Critic）：适合连续动作空间
-%
-% RLPD = SAC + 离线演示缓冲区 + 在线缓冲区
-% - 离线缓冲区：50个人类演示episode
-% - 在线缓冲区：训练中采集（容量100K）
-% - 预热：500步纯离线训练，之后混合采样
-% - 回放比例：50%离线 + 50%在线
-%
-% 人在回路：
-% - 键盘干预（在线采集过程中）
-% - 成功的干预加入离线缓冲区
-% - 失败的干预丢弃
-%
-% 分布式架构：Actor ←gRPC→ Learner
+\paragraph{与域随机化的联系。}这一做法与 Tobin 等人提出的域随机化~\cite{tobin2017domain} 在原则上同源：两者都依赖"让策略在训练时见过目标部署分布的样本"这一基本思路。区别在于，Tobin 等人随机化的是视觉渲染参数（纹理、光照、相机位姿），用以弥合 sim-to-real 的外观差距；而本文随机化的是一个直接改变策略可观测\emph{物理状态}的系统参数——编码器偏差改变的是状态本身而非像素表示。另一点区别是，随机偏差训练优化的是偏差分布上的\emph{期望}回报而非鲁棒 MDP 意义下的最坏情况回报——本文关心的是真机实例之间的平均表现，而非最差情况下的保证性能。
 
-\section{网络架构}\label{sec:network}
+\paragraph{固定偏差基线的实验预告。}为直接验证"单点条件化~$\to$~零偏差过补偿"这一假设，\cref{sec:exp_h2} 设计了固定偏差与随机偏差两组训练的对照实验：两组策略在相同的网络结构与训练超参下，分别暴露于 $b_i = 0.2\,\text{rad}$（固定，所有 $i = 1, \dots, 7$）与 $b_i \sim \mathcal{U}[0, 0.25\,\text{rad}]$（随机），随后在 $\vect{b}=\vect{0}$ 以及若干未在训练中出现过的偏差值上分别评估抓取成功率，以刻画两种训练方案在偏差分布上的泛化差异。
 
-% 状态编码器：Linear(24, 256) + LayerNorm + Tanh
-% 图像编码器：ResNet10（冻结）处理前视/腕部相机
-% Actor：[256, 256] MLP → 6D连续 + 1D离散夹爪
-% Critic：2× [256, 256] MLP（双Q学习）
-% 温度：可学习的 $\log\alpha$，自动调节
-%
-% SAC损失函数：
-% $L_Q = \expect[(Q(\vect{s},\vect{a}) - (r + \gamma \min_i Q_{\text{target},i}(\vect{s}', \vect{a}')))^2]$
-% $L_\pi = \expect[\alpha \log \pi(\vect{a}|\vect{s}) - Q(\vect{s}, \vect{a})]$
-% $L_\alpha = -\expect[\alpha (\log \pi(\vect{a}|\vect{s}) + \mathcal{H}_{\text{target}})]$
-%
-% 关键超参数：batch_size=256, utd_ratio=2, discount=0.97, lr=3e-4
+\section{HIL-SERL 训练框架}\label{sec:hilserl}
+
+\cref{sec:task_method_motivation} 的设计选择三已指出，任务策略需在真机上、稀疏奖励设置下收敛。本节给出实现这一目标的具体框架：以 Luo 等人提出的 HIL-SERL~\cite{luo2025hilserl} 为主干，以人在回路干预为持续纠错信号，并通过 Actor-Learner 分布式架构支撑真机异步采样。
+
+\paragraph{算法栈。}框架的底层是连续动作空间上的 Soft Actor-Critic~\cite{haarnoja2018sac}；其上，Ball 等人提出的 RLPD~\cite{ball2023rlpd} 通过两个回放缓冲区的 50/50 混合采样为稀疏奖励任务提供 demo 引导——\emph{离线演示缓冲区}预先装入 50 条人类遥操作的成功 episode，\emph{在线缓冲区}收集策略与环境的实时交互，每一步梯度更新都从两侧各采一半，不修改 SAC 损失（两阶段的具体训练流程见\cref{sec:network}）。HIL-SERL 则在 RLPD 之上进一步将人在回路干预作为训练数据的一等来源贯穿整个在线训练过程（干预数据的具体处理见下段）。
+
+\paragraph{人在回路干预。}在线采样过程中，训练者可通过遥操作设备（键盘、SpaceMouse 等）介入策略正在执行的 episode 并直接给出期望动作；这一"在策略失败的区域由人类示教补充纠错"的思路可追溯到 Ross 等人提出的 DAgger~\cite{ross2011dagger}。干预期间产生的转移被统一追加到离线演示缓冲区。本文最初曾尝试仅保留"最终成功"的干预 episode，但在实现与训练过程中发现两点问题：(i)~转移以步为单位写入缓冲区而非按 episode 组织，按成功与否回溯分割需引入额外的边界判定逻辑，且容易因失败率较高而整体丢弃大量有效监督；(ii)~即便 episode 最终未能完成抓取，人类干预所给出的动作方向本身也是可供策略学习的纠错梯度信号。因此最终统一保留所有干预转移，不再依赖最终成功与否进行过滤。
+
+\paragraph{分布式训练架构。}\cref{fig:hilserl_arch} 示意训练系统的两个异步进程。Actor 进程持有策略权重副本，负责与仿真或真机环境交互、接收 HIL 干预、把转移写入在线缓冲区；Learner 进程持有两个缓冲区与优化器，负责混合采样、计算 SAC 损失、更新 actor/critic 与温度参数，并定期把最新权重同步给 Actor。两侧通过 gRPC 通讯，使环境采样与梯度更新完全解耦——这对真机训练尤其关键：Learner 以最快速度执行梯度步，Actor 只需按固定的物理控制频率稳定收集转移，梯度计算不会阻塞控制回路。
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    >={Stealth[length=2mm]},
+    font=\small,
+    proc/.style={draw, rounded corners=4pt, inner sep=8pt, align=left, minimum width=5cm},
+  ]
+    \node[proc, fill=blue!5, label={[font=\small\bfseries]above:Actor 进程}] (actor) {%
+      \scriptsize
+      $\bullet$ 环境（仿真 / 真机）\\
+      $\bullet$ 策略权重副本\\
+      $\bullet$ HIL 干预接口%
+    };
+    \node[proc, fill=orange!5, right=2cm of actor, label={[font=\small\bfseries]above:Learner 进程}] (learner) {%
+      \scriptsize
+      $\bullet$ 离线缓冲区 + 在线缓冲区\\
+      $\bullet$ SAC 损失 \& 优化器\\
+      $\bullet$ 权重更新%
+    };
+
+    \draw[->, thick] ($(actor.east)+(0,0.3)$) -- ($(learner.west)+(0,0.3)$) node[midway, above, font=\scriptsize] {转移 (gRPC)};
+    \draw[<-, thick] ($(actor.east)+(0,-0.3)$) -- ($(learner.west)+(0,-0.3)$) node[midway, below, font=\scriptsize] {权重 (gRPC)};
+  \end{tikzpicture}
+  \caption{HIL-SERL 的 Actor-Learner 分布式架构。Actor 负责与环境交互、接收 HIL 干预、写入在线缓冲区；Learner 持有缓冲区与优化器，负责混合采样、SAC 更新并回推权重。两侧通过 gRPC 通讯，环境采样与梯度更新完全解耦。}
+  \label{fig:hilserl_arch}
+\end{figure}
+
+\section{网络架构与训练目标}\label{sec:network}
+
+\cref{sec:hilserl} 描述的 HIL-SERL 框架在实现上涉及一个\emph{共享编码器}、三个\emph{独立网络头}、四个\emph{训练损失}以及一个两阶段的训练流程。本节依次给出这些具体形式（\cref{fig:network_arch}）。
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    >={Stealth[length=2mm]},
+    font=\small,
+    input/.style={draw, rounded corners=2pt, inner sep=3pt, align=center, font=\scriptsize, minimum width=3.0cm, minimum height=0.55cm, fill=gray!5},
+    enc/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, font=\scriptsize, minimum width=3.3cm, minimum height=2.2cm, fill=blue!8},
+    concat/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, font=\scriptsize, minimum width=11cm, minimum height=0.5cm, fill=green!12},
+    head/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, font=\scriptsize, minimum width=3.3cm, minimum height=2.0cm, fill=orange!10},
+  ]
+    % Row 1: inputs
+    \node[input] (state_in) at (0, 0) {状态 $\vect{s}\in\mathbb{R}^{24}$};
+    \node[input] (front_in) at (4, 0) {前视 RGB $(3, 128, 128)$};
+    \node[input] (wrist_in) at (8, 0) {腕部 RGB $(3, 128, 128)$};
+
+    % Row 2: encoders
+    \node[enc] (state_enc) at (0, -1.85) {%
+      \textbf{状态编码器}\\[1pt]
+      MinMax $\to [-1, 1]$\\
+      Linear$(24 \to 256)$\\
+      LayerNorm $+$ Tanh\\
+      $\to 256$D%
+    };
+    \node[enc] (front_enc) at (4, -1.85) {%
+      \textbf{图像编码器 (front)}\\[1pt]
+      ImageNet 归一化\\
+      ResNet10 (冻结, 5M)\\
+      SpatialLearnedEmb $(8)$\\
+      Linear $+$ Dropout$(0.1)$\\
+      LN $+$ Tanh $\to 256$D%
+    };
+    \node[enc] (wrist_enc) at (8, -1.85) {%
+      \textbf{图像编码器 (wrist)}\\[1pt]
+      (同前视路径)\\
+      $\to 256$D%
+    };
+
+    % Row 3: concat
+    \node[concat] (concat) at (4, -3.6) {共享 feature  $\vect{h} \in \mathbb{R}^{768}$};
+
+    % Row 4: heads
+    \node[head] (actor) at (0, -5.3) {%
+      \textbf{连续 Actor}\\[1pt]
+      MLP $[768{,}256{,}256]$ ReLU\\
+      $(\vect{\mu}, \log\vect{\sigma})$:\\
+      Linear$(256\to 6) \times 2$\\
+      TanhSquash $\to \vect{a}^c \in \mathbb{R}^6$%
+    };
+    \node[head] (critic) at (4, -5.3) {%
+      \textbf{Twin Critic $\times 2$}\\[1pt]
+      输入: $[\vect{h};\, \vect{a}^c]$\\
+      MLP $[774{,}256{,}256{,}1]$\\
+      ReLU\\
+      $\to Q_{\theta_{1,2}}(\vect{s}, \vect{a}^c)$%
+    };
+    \node[head] (dcritic) at (8, -5.3) {%
+      \textbf{离散 Gripper Critic}\\[1pt]
+      输入: $\vect{h}$\\
+      MLP $[768{,}256{,}256{,}3]$ ReLU\\
+      $\to \vect{Q}^g \in \mathbb{R}^3$\\
+      \{0:\,关,\ 1:\,保持,\ 2:\,开\}%
+    };
+
+    % Arrows: inputs -> encoders
+    \draw[->] (state_in) -- (state_enc);
+    \draw[->] (front_in) -- (front_enc);
+    \draw[->] (wrist_in) -- (wrist_enc);
+
+    % Arrows: encoders -> concat
+    \draw[->] (state_enc.south) -- (state_enc.south |- concat.north);
+    \draw[->] (front_enc.south) -- (front_enc.south |- concat.north);
+    \draw[->] (wrist_enc.south) -- (wrist_enc.south |- concat.north);
+
+    % Arrows: concat -> heads
+    \draw[->] (actor.north |- concat.south) -- (actor.north);
+    \draw[->] (critic.north |- concat.south) -- (critic.north);
+    \draw[->] (dcritic.north |- concat.south) -- (dcritic.north);
+  \end{tikzpicture}
+  \caption{任务策略的网络架构。三路输入（$24$ 维状态 + 前视/腕部 $128\times 128$ RGB）分别经各自的编码器处理后，按通道拼接为 $768$ 维的共享 feature $\vect{h}$；三个头共享 $\vect{h}$ 作为输入但输出与训练损失各异——连续 Actor 产生 6 维 Cartesian 末端动作、Twin Critic 输出两个标量 Q 值（取最小以抑制高估）、离散 Gripper Critic 输出 3 维 Q 值选择夹爪动作。ResNet10 主干在训练中保持冻结，只更新其后的投影层、状态编码器与三个头。}
+  \label{fig:network_arch}
+\end{figure}
+
+\paragraph{输入编码。}任务策略接收三路输入：24 维状态观测（见\cref{sec:obs_design}）、前视相机 RGB 与腕部相机 RGB（分辨率均为 $128 \times 128$）。状态先按逐维 Min-Max 归一化映射到 $[-1, 1]$（每维的 min/max 取自工作空间先验），再经 Linear$(24 \to 256)$ + LayerNorm + Tanh 得到 256 维特征。两路图像各自按 ImageNet 均值/标准差归一化后送入一个\emph{冻结}的 ResNet10 主干~\cite{he2016deep}（约 5M 参数），然后由一个可学习的 SpatialLearnedEmbeddings 层（按 8 个空间方向进行特征池化）压缩空间维度，再经 Linear $+$ Dropout$(0.1)$ $+$ LayerNorm $+$ Tanh 投影到 256 维。三路 256 维特征按通道拼接得到 768 维共享 feature $\vect{h}$，作为下游三个头的共同输入。ResNet10 主干的参数在整个训练过程中始终不更新，只训练其后的投影层、状态编码器与三个头。
+
+\paragraph{三个网络头。}三个头均以两层 MLP 为主体（隐层维度 $[256, 256]$、激活函数 ReLU），但输入、输出与训练损失各不相同。\emph{连续 Actor} 以共享 feature $\vect{h}$ 为输入，经 $[768, 256, 256]$ MLP 后并接两个 Linear$(256 \to 6)$ 头分别输出均值 $\vect{\mu}$ 与对数标准差 $\log\vect{\sigma}$，通过 \texttt{TanhMultivariateNormalDiag} 分布采样得到 6 维连续动作 $\vect{a}^c \in \mathbb{R}^6$（对应 3 维末端位置增量与 3 维末端姿态增量）。\emph{Twin Critic} 包含两份独立初始化的 Q 网络 $Q_{\theta_1}, Q_{\theta_2}$，各自以 $[\vect{h};\, \vect{a}^c]$ 为输入、经 $[774, 256, 256, 1]$ MLP 输出标量 $Q \in \mathbb{R}$，训练中取两者的最小值以抑制价值高估（Clipped Double Q-Learning）。\emph{离散 Gripper Critic} 以共享 feature 为输入、经 $[768, 256, 256, 3]$ MLP 输出 3 维 $Q$ 值向量，对应代码中编号为 $\{0{:}\text{关},\, 1{:}\text{保持},\, 2{:}\text{开}\}$ 的三种离散夹爪动作，采样时取 $\arg\max$ 作为贪婪策略。温度参数 $\alpha$ 以可学习的 $\log\alpha$ 参数化、自动调节（初始值 $\alpha_0 = 0.01$），属于独立的优化器参数组。
+
+\paragraph{训练目标。}连续分支遵循 SAC 的标准三个损失（熵正则化与自动温度调节的背景见\cref{ch:related_work}）：
+\begin{align*}
+  L_Q &= \mathbb{E}_{(s,\vect{a},r,s')\sim\mathcal{B}}\!\left[\left(Q_\theta(s,\vect{a}) - y\right)^2\right], \quad y = r + \gamma(1-d)\!\left[\min_i Q_{\bar{\theta}_i}(s', \vect{a}') - \alpha \log \pi_\phi(\vect{a}'|s')\right], \\
+  L_\pi &= \mathbb{E}_{s\sim\mathcal{B},\, \vect{a}\sim\pi_\phi}\!\left[\alpha \log \pi_\phi(\vect{a}|s) - \min_i Q_{\theta_i}(s, \vect{a})\right], \\
+  L_\alpha &= -\,\mathbb{E}\!\left[\alpha\left(\log \pi_\phi(\vect{a}|s) + \bar{\mathcal{H}}\right)\right],
+\end{align*}
+其中 $\vect{a}' \sim \pi_\phi(\cdot|s')$、$\bar{\mathcal{H}}$ 为目标熵、$\bar{\theta}_i$ 为目标网络参数。离散夹爪头则独立地以 Double DQN 形式的 MSE Bellman 损失训练：
+\begin{equation*}
+  L_{Q^g} = \mathbb{E}_{(s, a^g, r, s')\sim\mathcal{B}}\!\left[\left(Q^g_\psi(s, a^g) - y^g\right)^2\right], \quad y^g = r + \gamma(1-d)\, Q^g_{\bar{\psi}}\!\left(s',\; \arg\max_{a'} Q^g_\psi(s', a')\right),
+\end{equation*}
+其中 $a^g \in \{\text{关},\, \text{保持},\, \text{开}\}$（即\cref{fig:network_arch} 与上一段中代码编号 $\{0, 1, 2\}$ 对应的三种离散夹爪动作）。四组损失的梯度都反向传播到各自的头参数与共享编码器的可训练部分（ResNet10 主干保持冻结），四组参数以各自的 Adam 优化器同步更新。
+
+\paragraph{训练流程。}完整训练由两个阶段构成。\emph{Demo warmup 阶段}：训练开始时的前 500 步梯度更新仅从离线缓冲区采样（此时在线缓冲区尚空），用 50 条 demo 为两个 critic 与 actor 建立合理的初始值，避免在线交互起步时因价值函数随机初始化产生不稳定的策略行为。\emph{在线混合采样阶段}：warmup 结束后 Actor 进程开始与仿真或真机环境交互并接收 HIL 干预。其中进入在线阶段后的前 100 个环境步被留作\emph{纯数据收集}（$\texttt{online\_step\_before\_learning}=100$，只向在线缓冲区写入转移而不触发梯度更新），其作用在于让在线缓冲区先积累一小批与当前策略分布匹配的样本，避免在缓冲区几乎为空时就以极度偏置的采样分布破坏 warmup 阶段已获得的初始值。之后进入稳态训练循环：每个环境步触发 2 次梯度更新（$\text{UTD}=2$），每次更新从离线与在线缓冲区各采 $|\mathcal{B}|/2$ 条转移；干预产生的转移按\cref{sec:hilserl} 所述回注离线缓冲区；每 4 个梯度步 Learner 把 Actor 与离散 critic 的最新权重通过 gRPC 同步推送给 Actor 进程。整个过程中所有超参数（\cref{tab:hyperparams}）保持不变。
+
+\begin{table}[htbp]
+  \centering
+  \caption{任务策略 HIL-SERL 训练的关键超参数}
+  \label{tab:hyperparams}
+  \small
+  \begin{tabular}{@{}lc@{}}
+    \toprule
+    超参数 & 取值 \\
+    \midrule
+    总在线训练步数 & $10^5$ \\
+    Demo warmup 步数（纯离线预训练） & 500 \\
+    在线阶段首次学习前的环境步数 & 100 \\
+    UTD 比例（每环境步的梯度更新次数） & 2 \\
+    Actor 权重推送频率（Learner~$\to$~Actor） & 每 4 个梯度步 \\
+    \midrule
+    Batch size $|\mathcal{B}|$（离线 $+$ 在线） & $256\ (128 + 128)$ \\
+    学习率 (actor / critic / $\alpha$) & $3 \times 10^{-4}$ \\
+    梯度裁剪范数 & $40.0$ \\
+    折扣因子 $\gamma$ & $0.97$ \\
+    目标网络软更新 $\tau$ & $0.005$ \\
+    SAC 初始温度 $\alpha_0$ & $0.01$ \\
+    \midrule
+    潜在维度 / MLP 隐层 & $256$ / $[256, 256]$ \\
+    缓冲区容量（离线 / 在线） & $10^5$ / $10^5$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
 \section{奖励设计}\label{sec:task_reward}
 
-% 抓取任务稀疏奖励：
-% $r = 1.0$ if success else $0.0$
-% success = (距离 < 5cm) AND (抬升高度 > 20cm)
-%
-% 稀疏奖励可行的原因：
-% - RLPD提供了演示引导的探索
-% - 人类干预引导早期训练
-% - 密集奖励在偏差下容易产生reward hacking
+\paragraph{奖励函数。}本文任务策略采用稀疏二值奖励：
+\begin{equation*}
+  r_t = \begin{cases}
+    1 & \text{若 episode 在步 $t$ 达成成功判定条件}, \\
+    0 & \text{否则}.
+  \end{cases}
+\end{equation*}
+在仿真训练中，成功判定由 MuJoCo 真值给出：方块与目标放置板在水平面的投影距离 $\lVert \vect{p}_\text{block}^{xy} - \vect{p}_\text{plate}^{xy}\rVert < 8\,\text{cm}$，且方块 $z$ 坐标 $< 5\,\text{cm}$（即方块已被放下而非悬在半空）。真机中同样采用 $r \in \{0, 1\}$ 的稀疏形式，但因真机物块位置目前尚未接入外部视觉检测，判定退化为"TCP 位姿是否到达预设目标位姿"——两种机制在数学形式上等价，均不向策略提供距离层面的密集信号，具体实现见\cref{ch:real_robot}。每个 episode 在成功或步数上限（$200$ 步 @ $10\,\text{Hz}$，即 $20\,\text{s}$）时终止；成功时的那一步产生 $r_t = 1$，其余步为 $0$。
+
+\paragraph{稀疏奖励的可行性。}一般设定下稀疏奖励常因探索困难而难以收敛，但本文两个具体约束使稀疏奖励反而比密集奖励更合适。(i)~\cref{sec:hilserl} 的 HIL-SERL 训练框架已通过离线 demo 引导（50 条成功 episode $+$ warmup）与训练全程的人在回路干预解决了稀疏奖励最核心的探索瓶颈——策略不必"从零摸索出第一次成功"，demo 与干预已经为 critic 提供了充足的正样本与纠错梯度。(ii)~在编码器偏差下，自然的密集奖励候选（如 $-\lVert\text{FK}(\vect{q}+\vect{b}) - \vect{p}_\text{block}\rVert$ 形式的 TCP-目标距离）本身就是\emph{被污染的信号}——它依赖 $\text{FK}(\vect{q}+\vect{b})$ 而非真实 TCP 位置，因此直接沿该密集信号优化会诱导策略把偏差的几何效应 hack 进 proxy 指标之中、偏离真实目标（即典型的 reward hacking，背景见\cref{ch:related_work}）。综合 (i) 与 (ii)，稀疏二值奖励是本文设定下最稳妥的选择。

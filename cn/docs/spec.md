@@ -68,6 +68,14 @@
 
 ### 第 2 章 相关工作（6–8 页）
 
+**写作原则（与方法章分工）：**
+Ch.2 的职责是**领域景观、对比替代方案、定位本文的选择**，视角是"别人做了什么、各自的强弱、本文为什么选 X 而不是 Y/Z"。
+Ch.4/Ch.5 的职责是"本文具体用了什么、怎么配置"。
+- **Ch.2 不重复 Ch.4/Ch.5 的技术配置细节**（例如 RLPD 的"50 条 demo、50/50 混合、demo warmup"这类参数级细节，以及 HIL-SERL 干预处理的具体演化）。
+- **Ch.2 以对比和定位为主**：例如"RL+demos 家族（RLPD/DDPGfD/AW-BC...）取舍比较、HIL 家族（DAgger/HG-DAgger/HIL-SERL...）对真机场景的适配程度、本文为何选 HIL-SERL"。
+- **Ch.2 引用方法章做细节指针**：`本文所采用的具体配置见\cref{sec:hilserl}` 等。
+- 重叠的引用 key 允许出现（`\cite{luo2025hilserl}` 在 Ch.2 和 Ch.4 都会出现），但用途不同：Ch.2 是"景观位置"，Ch.4 是"本文配置"。
+
 ```
 2.1 机器人容错控制（FDI/FTC）
     - Blanke 2016 FDI/FTC 教材
@@ -88,9 +96,10 @@
     - 状态空间 DR 的成功案例
 
 2.5 人在回路强化学习
-    - HIL-SERL (Luo 2024)
-    - RLPD (Ball 2023)
-    - 键盘干预与 demo bootstrap
+    - HIL-SERL (Luo 2025, Science Robotics) —— 本文采用，Ch.2 做景观对比
+    - RLPD (Ball 2023) —— HIL-SERL 的底层算法
+    - 对比维度：纯在线 SAC / pure BC / DDPGfD / vanilla DAgger / HIL-SERL
+    - 不重复 §4.4 的技术配置细节
 
 2.6 安全强化学习与避障
     - Kiemel 2024 非负即时奖励
