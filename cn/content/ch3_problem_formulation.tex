@@ -149,7 +149,7 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
   \label{eq:effect2}
 \end{equation}
 
-\paragraph{物理含义} 任意非零的编码器偏差都会导致控制器输出一个在\emph{大小和方向}上均偏离理想值的关节力矩。一阶展开式~\cref{eq:tau_linearization} 进一步说明，力矩偏差的幅度与偏差 $\vect{b}$ 近似成线性关系，其方向由 OSC 控制律对 $\vect{q}$ 的梯度决定。值得强调的是，这一效应的来源是 $\mat{J}$ 和 $\text{FK}$ 在不同关节构型下的差异，\emph{而非任何加性噪声}——换言之，即使 $\vect{b}$ 在 episode 内完全恒定，力矩偏差也会在整个轨迹上持续存在。
+\paragraph{物理含义} 任意非零的编码器偏差都会使控制器输出一个在大小与方向上均偏离理想值的关节力矩；一阶展开式~\cref{eq:tau_linearization} 表明力矩偏差的幅度与 $\vect{b}$ 近似成线性，方向由 OSC 控制律对 $\vect{q}$ 的梯度决定。该效应源自 $\mat{J}$ 与 $\text{FK}$ 在不同关节构型下的差异而非任何加性噪声，因此即使 $\vect{b}$ 在 episode 内恒定，力矩偏差也会在整个轨迹上持续存在。
 
 \subsection{效应 3：感知偏差}\label{subsec:effect3}
 
@@ -166,11 +166,11 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 \end{align}
 注意到 $\dot{\vect{q}}_{\text{measured}} = \dot{\vect{q}}_{\text{true}}$：因为 $\vect{b}$ 在一个 episode 内恒定，对时间求导后消失。因此在 episode 内，感知偏差仅作用于位置类观测（关节角和末端位置），不影响速度类观测。
 
-\paragraph{物理含义} 策略所"看到"的机器人状态在\emph{位置维度上系统性地撒谎}。更微妙的是，两个位置类观测分量——关节角 $\vect{q}_{\text{measured}}$ 与末端位置 $\vect{x}_{\text{ee}}^{\text{FK}}$——虽然在表面上是两条独立的信息源，实际上却共享同一个被污染的底层变量。这意味着策略\emph{无法}通过比较 $\vect{q}_{\text{measured}}$ 与 $\vect{x}_{\text{ee}}^{\text{FK}}$ 来检测偏差：两者在数值上是自洽的（$\vect{x}_{\text{ee}}^{\text{FK}}$ 就是 $\vect{q}_{\text{measured}}$ 的正运动学），它们之间的任何"一致性检查"都恒为真。这一观察将在\cref{sec:observability} 的可观测性分析中扮演核心角色。
+\paragraph{物理含义} 策略所"看到"的机器人状态在\emph{位置维度上系统性地撒谎}。两个位置类观测——$\vect{q}_{\text{measured}}$ 与 $\vect{x}_{\text{ee}}^{\text{FK}}$——表面是两条独立信息源，实际共享同一个被污染的底层变量，因此策略\emph{无法}通过比较它们来检测偏差（$\vect{x}_{\text{ee}}^{\text{FK}}$ 就是 $\vect{q}_{\text{measured}}$ 的正运动学，两者之间的任何"一致性检查"都恒为真）。这一观察将在\cref{sec:observability} 的可观测性分析中扮演核心角色。
 
 \subsection{因果链总结}\label{subsec:causal_summary}
 
-将~\cref{subsec:effect1,subsec:effect2,subsec:effect3} 的结论合并即得本节核心论点：单一编码器偏差 $\vect{b}$ 通过三条结构上相互独立的路径——底层 PD 控制器的反馈回路、OSC 控制律中的雅可比与 FK、以及观测函数——同时产生三个可观测的效应，但这三个效应\emph{全部源自同一个关节空间变量 $\vect{b}$}。这一"一源三效应"的耦合结构是编码器偏差问题与一般随机噪声问题的本质区别，也是后续\cref{sec:pomdp} 将其建模为\emph{单一 episode 级隐变量} POMDP 的直接依据。\cref{fig:causal_chain} 用图示方式总结了这一结构。
+三个效应虽然经由不同路径（PD 反馈、OSC 雅可比/FK、观测函数）产生，但\emph{全部源自同一个关节空间变量 $\vect{b}$}——这正是\cref{sec:pomdp} 把 $\vect{b}$ 建模为\emph{单一 episode 级隐变量}的直接依据。\cref{fig:causal_chain} 以图示方式总结这一耦合结构。
 
 % TODO[figure]: 后期美化此因果链总图，见 docs/todo.md 第 2 项
 \begin{figure}[htbp]
@@ -324,9 +324,9 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 
 \paragraph{定位噪声的影响} 命题\ref{prop:identifiable} 假设 $\vect{\epsilon} = \vect{0}$。在 $\sigma > 0$ 的实际情况下，$\vect{q}_{\text{true}}$ 和 $\vect{b}$ 只能被\emph{近似}恢复：$\sigma \to 0$ 时辨识精度趋于完美；$\sigma$ 增大时辨识误差相应增大；极端地，若 $\sigma$ 大到使 $\vect{o}_{\text{real}}$ 的信噪比低于 $\vect{b}$ 本身的典型幅值，则外部观测失去作用，系统退化回命题\ref{prop:non_identifiable} 描述的不可辨识情形。本文采用的 $\sigma = 5$\,mm 对应于 ArUco 视觉标记配合 D455 深度相机在典型工作距离下的定位精度，在实践中既易于实现，又足以支撑\cref{ch:task_policy} 中策略对偏差的鲁棒响应。
 
-\paragraph{为什么仍保留带偏差的本体感觉} 一个自然的问题是：既然 $\vect{o}_{\text{real}}$ 已经提供了 $\text{FK}(\vect{q}_{\text{true}})$，为何不直接舍弃带偏差的关节读数 $\vect{q}_{\text{true}} + \vect{b}$？原因在于\emph{构型信息}：即使带偏差，$\vect{q}_{\text{measured}}$ 仍刻画了机械臂的关节构型，编码了奇异性邻近度、关节限位裕度以及 7-DoF 冗余度中的零空间方向等关键信息。这些信息对策略在复杂任务中的精细控制（如避开奇异位形、规避关节限位）至关重要，而单凭三维的 $\vect{o}_{\text{real}}$ 无法提供。换言之，$\vect{o}_{\text{real}}$ 解决的是\emph{偏差辨识}问题，$\vect{q}_{\text{measured}}$ 解决的是\emph{构型感知}问题——两者相互补充，共同构成\cref{ch:task_policy} 中 24 维观测设计的理论依据。
+\paragraph{为什么仍保留带偏差的本体感觉} 带偏差的 $\vect{q}_{\text{measured}}$ 仍然编码了机械臂的关节构型——奇异性邻近度、关节限位裕度、$7$-DoF 冗余度中的零空间方向等——这些信息单凭三维的 $\vect{o}_{\text{real}}$ 无法提供，构成保留本体感觉通路的必要性。与之互补的设计层面理由（信息完整性与运行时容错）见\cref{subsec:obs_keep_contam}。
 
-\paragraph{与消融实验的对应} 本节的两个命题并非纯粹的理论推演，它们直接预测了\cref{sec:exp_ablation} 中观测空间消融实验的结果。实验中的 18 维观测（不含 $\vect{o}_{\text{real}}$）对应命题\ref{prop:non_identifiable} 所描述的不可辨识情形——策略性能在偏差下严重退化；而 24 维观测（含 $\vect{o}_{\text{real}}$）对应命题\ref{prop:identifiable} 所描述的可辨识情形——策略在全偏差范围内保持鲁棒。这一一一对应的理论-实验对照，既为本文的观测空间设计提供了可验证的理论依据，也反向印证了命题\ref{prop:non_identifiable} 与命题\ref{prop:identifiable} 并非形式化游戏，而是对问题本质的准确刻画。
+\paragraph{与消融实验的对应} 本节的两个命题并非纯粹的理论推演，它们直接预测了\cref{sec:exp_ablation} 中观测空间消融实验的结果。消融实验把\cref{ch:task_policy} 使用的完整 $31$ 维观测与\emph{剔除}独立外部 TCP $\vect{o}_\text{real}$ 的 $28$ 维变体进行对照——前者对应命题\ref{prop:identifiable} 的可辨识情形，策略在全偏差范围内应保持鲁棒；后者对应命题\ref{prop:non_identifiable} 的不可辨识情形，预期策略性能在偏差下严重退化。这一对应既为本文的观测空间设计提供了可验证的理论依据，也反向印证了两个命题并非形式化游戏，而是对问题本质的准确刻画。
 
 \section{仿真实现与等价性分析}\label{sec:sim_implementation}
 
