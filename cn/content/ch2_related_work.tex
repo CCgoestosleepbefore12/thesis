@@ -2,41 +2,75 @@
 
 \chapter{相关工作}\label{ch:related_work}
 
-\section{机器人容错控制}\label{sec:ftc}
+% 写作原则：
+% Ch.2 = 领域景观 + 对比替代方案 + 定位本文选择；Ch.4–6 = 本文具体配置。
+% 不重复 §4–§6 的技术配置细节；以对比和定位为主；引用方法章做细节指针。
+% 标题对位"Hierarchical IL+RL"：IL 在前 RL 在后，呼应论文叙事重心。
 
-% 传统FDI/FTC（故障检测、隔离与重构）
-% - 基于模型的方法：解析冗余、观测器
-% - 数据驱动方法
-% - 局限：需要故障模型、常需停机、无法适应未知偏差
-% - 空白：尚无基于在线学习的编码器校准偏差适应方法
+\section{机器人容错控制（FDI/FTC）}\label{sec:ftc}
 
-\section{POMDP求解方法}\label{sec:pomdp_methods}
+% Blanke 2016 FDI/FTC 教材：故障检测、隔离与重构的经典框架
+% - 基于模型方法：解析冗余、观测器、参数辨识
+% - 数据驱动方法：信号处理、机器学习
+% 局限：
+%   (i) 需要明确故障模型（编码器偏差通常被忽略）
+%   (ii) 以"保持稳定"而非"完成任务"为目标
+%   (iii) 检测+切换路径常需停机
+% 空白：尚无在线学习的编码器校准偏差适应方法
+% 本文定位：以"在线适应"替代"事后切换"
 
-% 精确方法：信念状态、PBVI、PERSEUS → 维度灾难
-% 近似方法：
-%   - RNN/GRU/LSTM隐式记忆 → 需要多步历史
-%   - 观测增强 → 本文方法
-%   - 隐参数域随机化 → 与本文偏差随机化相关
-% 本文定位：观测增强将POMDP近似还原为MDP
+\section{POMDP 求解方法}\label{sec:pomdp_methods}
 
-\section{鲁棒强化学习}\label{sec:robust_rl}
+% Kaelbling 1998：信念状态方法（POMDP 的经典精确解法）
+% Hausknecht 2015 DRQN：RNN/GRU 隐式记忆，应对部分可观测
+% 仅作为文献背景，不作对比论断
+% 本文定位：观测增强 + 端到端 RL，不依赖显式信念状态推断
+% 与 RNN 路径的对比留作 Ch.8 future work（GRU context encoder）
 
-% 鲁棒MDP / 对抗RL
-% 域随机化在sim-to-real中的应用
-%   - OpenAI：魔方 + DR
-%   - Tobin et al.：视觉迁移的DR
-% 本文：偏差随机化作为对隐变量的定向DR
+\section{机器人强化学习与残差结构}\label{sec:residual_rl}
 
-\section{人在回路强化学习}\label{sec:hil_rl}
+% Johannink 2019 残差 RL：硬编码基础控制器 + RL 学残差修正
+% - 在偏差场景下作为本文的潜在 baseline
+% - 但残差 RL 仍依赖底层控制器使用编码器读数 → 同样受偏差污染
+% 其他结构化 RL：分层 RL、option framework
+% 本文定位：未与残差 RL 在真机做系统对照，留作未来工作
 
-% 交互式模仿学习：DAgger
-% RLPD (Ball et al.)：离线演示 + 在线交互
-% HIL-SERL (Luo et al.)：真机RL的人类干预
-% 本文训练框架：RLPD + 键盘干预
+\section{鲁棒强化学习与域随机化}\label{sec:robust_rl_dr}
 
-\section{安全强化学习与避障}\label{sec:safe_rl}
+% 鲁棒 MDP / 对抗 RL：worst-case 优化
+% Tobin 2017：视觉域随机化，sim-to-real 主流方案
+%   - 视觉 sim2real gap 的既定难题
+% 状态空间 DR 的成功案例：用作 §5.3 backup 范式（DR on 位置噪声/延迟）的支撑
+% 本文定位：偏差随机化是对隐变量的"必须 condition" 类型 DR
+%   - 区别于 Tobin 视觉 DR 的"应被忽略"类型（详见 §4.3）
 
-% 约束MDP / 安全RL
-% Kiemel et al. 2024：安全RL中的非负即时奖励
-% 分层RL中的备份/恢复策略
-% 本文备份策略：HIL训练中的主动避障
+\section{模仿学习与人在回路}\label{sec:il_hil}
+
+% IL 在前（呼应论文标题"Hierarchical IL+RL"，本文真机采用）
+% - 行为克隆 BC：纯监督学习，简单但 OOD 失败
+% - DAgger (Ross 2011)：query-by-policy 范式
+% - HG-DAgger (Kelly 2019)：human-initiated 介入，本文真机最终采用
+% - HIL-SERL (Luo 2025, Science Robotics)：本文仿真侧采用
+%   - RLPD (Ball 2023) 为底层算法
+% 对比维度：
+%   - 纯在线 SAC / pure BC / DDPGfD / vanilla DAgger / HG-DAgger / HIL-SERL
+% 本文定位（双端选择）：
+%   - sim 端 HIL-SERL 验证理论（§4.4 + §5.2）
+%   - real 端 BC + HG-DAgger 部署（§6.2）
+%   - 真机 HIL-SERL 失败的方法论级 negative result（§6.2.5）
+% 不重复 §4.4 / §5.2 / §6.2 的技术配置细节
+
+\section{安全强化学习与 Reward Hacking 背景}\label{sec:safe_rl}
+
+% 约束 MDP / 安全 RL：Constrained MDP, CPO, Lagrangian methods
+% Kiemel 2024：非负即时奖励 + 大终止惩罚
+%   - §5.3.4 V3 reward 设计的直接来源
+% 分层 RL 中的备份/恢复策略：
+%   - Kiemel 2024 backup-as-safety-layer 思路
+%   - 本文 §5.3.2 沿用"预先训练 backup、运行时切换"框架
+% Reward hacking / reward misspecification 概念背景：
+%   - Skalse 2022 等分类
+%   - 用作 §5.3.4 V1 跑远 / V2 快死 reward hacking 案例分析的语境
+% 本文定位：
+%   - V1/V2 是典型 reward hacking 的两种新案例（§5.3.4 实证）
+%   - V3b 几何升级是真机失效模式倒逼仿真升级的案例

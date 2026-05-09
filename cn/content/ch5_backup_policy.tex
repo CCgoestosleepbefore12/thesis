@@ -58,32 +58,11 @@
 
 本节给出备份避让策略的仿真训练全栈：问题定义、训练范式选择、场景设计、奖励函数演化、几何升级与域随机化。备份策略与\cref{sec:sim_task_train} 任务策略的最大区别是采用\emph{纯仿真 SAC $+$ DR} 而非 HIL-SERL——下文 \cref{sec:backup_paradigm} 给出范式选择的详细论证。
 
-\subsection{问题定义与部署场景}\label{sec:backup_problem}
+\subsection{问题定义与安全需求}\label{sec:backup_problem}
 
-工业装配任务通常把机器人工作空间按功能划分为多个区域。本文考虑的 pick-and-place 场景按基座系 $Y$ 轴分为三区（\cref{fig:deployment_scene}）：\emph{Zone A}（$Y < -0.15\,\text{m}$）为物料区，仅机械臂进入;\emph{Zone C}（$Y > 0.20\,\text{m}$）为人员专用区，机器人禁入;中间的 \emph{Zone B}（宽 $0.35\,\text{m}$）为装配区，亦是\textbf{人机共享区}——工人偶尔需从 Zone C 一侧伸手进入 Zone B 取物料或做手动操作。本节描述的\textbf{备份避让策略}即为这类间歇性共享而设计：人手接近机械臂末端时由其接管、主动避让、结束后交还任务策略。该策略在两种情境下共用同一套机制——(i)~生产部署时的人机协同安全（主要应用）;(ii)~\cref{ch:task_policy} HIL 训练期间操作者介入时的安全保障（派生应用）。
+\textbf{备份避让策略的适用情境}：在机械臂执行抓取/放置任务的过程中，人手可能间歇性地进入工作空间——例如操作员调整物料位置、补充耗材、或在 HIL 训练期间手动干预。在这类间歇性人机共享情境下，备份策略\emph{在人手接近 TCP 时由其接管、主动避让、结束后交还任务策略}。该策略覆盖两种情境：(i)~生产部署时的人机协同安全（主要应用）;(ii)~\cref{ch:task_policy} HIL 训练期间操作者介入时的安全保障（派生应用）。
 
-\begin{figure}[htbp]
-  \centering
-  \begin{tikzpicture}[
-    font=\small,
-    >={Stealth[length=2.5mm]},
-    zoneA/.style={draw, fill=blue!10, minimum width=3.2cm, minimum height=3.6cm, align=center, font=\small\bfseries},
-    zoneB/.style={draw, fill=green!12, minimum width=3.2cm, minimum height=3.6cm, align=center, font=\small\bfseries},
-    zoneC/.style={draw, fill=red!10, minimum width=3.2cm, minimum height=3.6cm, align=center, font=\small\bfseries},
-  ]
-    \node[zoneA] (zA) at (0, 0) {Zone A\\[2pt] \normalfont\scriptsize 物料区 / 生产线\\[-1pt] \normalfont\scriptsize (仅机器人)\\[-1pt] \normalfont\scriptsize $Y < -0.15$\,m};
-    \node[zoneB, right=0cm of zA] (zB) {Zone B\\[2pt] \normalfont\scriptsize 装配区\\[-1pt] \normalfont\scriptsize 人机协同共享\\[-1pt] \normalfont\scriptsize $[-0.15, 0.20]$\,m};
-    \node[zoneC, right=0cm of zB] (zC) {Zone C\\[2pt] \normalfont\scriptsize 人员专用区\\[-1pt] \normalfont\scriptsize (机器人禁入)\\[-1pt] \normalfont\scriptsize $Y > 0.20$\,m};
-
-    \draw[->, thick, dashed, blue!60!black] ($(zA.north)+(0,0.3)$) to[out=30, in=150] node[midway, above, font=\scriptsize] {任务：方块 A $\to$ B} ($(zB.north)+(0.4,0.3)$);
-
-    \draw[->, thick, red!70!black] ($(zC.south)+(0,-0.3)$) to[out=-150, in=-30] node[midway, below, font=\scriptsize] {人手间歇进入} ($(zB.south)+(0.4,-0.3)$);
-  \end{tikzpicture}
-  \caption{部署场景示意（俯视）。机械臂把方块从 Zone A 搬运到 Zone B 的目标板;Zone B 同时是人机协同区，工人偶尔从 Zone C 一侧伸手进入。当人手进入 Zone B 并距 TCP 小于阈值时，备份避让策略接管、保证机械臂主动闪避。（示意图，后期精修。）}
-  \label{fig:deployment_scene}
-\end{figure}
-
-\paragraph{安全需求。}备份策略需同时满足四条要求：(1)~\textbf{避碰}——TCP 与人手距离 $> 8\,\text{cm}$;(2)~\textbf{保持夹持}——避让过程绝不放开已夹方块;(3)~\textbf{Zone C 禁入}——TCP 的 $Y$ 坐标不越 $0.20\,\text{m}$;(4)~\textbf{原地闪避}——避让期间 TCP 累计位移 $\leq 15\,\text{cm}$，以保证任务策略能在原位附近恢复执行。违反任一条则 episode 即以 $-10$ 终止，具体奖励形式见\cref{sec:backup_reward}。
+\paragraph{安全需求。}备份策略需同时满足四条要求：(1)~\textbf{避碰}——TCP 与人手距离 $> 8\,\text{cm}$;(2)~\textbf{保持夹持}——避让过程绝不放开已夹方块;(3)~\textbf{工作空间硬边界}——TCP 不越出预设笛卡尔工作空间（仿真 spawn box 与真机 \texttt{abs\_pose\_limit} 联合定义）;(4)~\textbf{原地闪避}——避让期间 TCP 累计位移 $\leq 15\,\text{cm}$，以保证任务策略能在原位附近恢复执行。违反任一条则 episode 即以 $-10$ 终止，具体奖励形式见\cref{sec:backup_reward}。
 
 \paragraph{运行时策略切换机制。}Actor 侧同时持有任务策略与备份策略两套参数，由人手--TCP 欧氏距离决定当前步由哪一套产生动作：距离 $\geq 8\,\text{cm}$ 时任务策略动作生效，距离 $< 8\,\text{cm}$ 时立即切换到备份策略;备份策略至多连续执行 $10$ 步，期间若人手离开工作空间或步数用尽则切回任务策略。这一"距离触发 $+$ 时间有界"的硬切换把备份策略的训练目标简化为"在 $10$ 步内避让并稳定"，与任务层面的语义完全解耦。真机部署的具体阈值与几何对齐（Route A center-dist）见\cref{sec:backup_real_deploy}。
 
@@ -153,7 +132,7 @@
 \begin{equation*}
   r_t^{\text{V3}} = 0.5 - 0.5 \lVert\Delta\vect{p}_t\rVert - 0.01 \lVert\vect{a}_t\rVert - 0.01 \lVert\Delta\vect{a}_t\rVert \;\geq\; 0,
 \end{equation*}
-在碰撞、方块掉落、TCP 越 Zone C、或累计位移 $\lVert\Delta\vect{p}_t\rVert > 15$\,cm 任一触发时，episode 以大终止惩罚 $r_{\text{term}} = -10.0$ 结束;若 episode 安全存活满 $10$ 步则额外给予 $+5.0$ 完成奖励;折扣 $\gamma = 1.0$。\cref{tab:v3_returns} 列出几种典型场景的总回报：不动 $+10.0$ $>$ 小闪避 $\approx +9.7$ $>$ 大闪避 $\approx +8.5$ $\gg$ 碰撞或过度反应 $-10.0$。这一排序有三个关键性质：(i)~\emph{每步即时奖励非负}，存活永远优于提前终止，消除了 V2 的"快死"漏洞;(ii)~\emph{终止惩罚远大于任何存活轨迹的累积上限}（$|{-10.0}| \gg +10.0$），主动终止不是期望回报上的优解;(iii)~不动 $>$ 小闪避 $>$ 大闪避的软排序让策略在可以不动时倾向于不动（对齐"原地闪避"目标，消除了 V1 的"跑远"漏洞），不得不动时倾向于小幅动作。
+在碰撞、方块掉落、TCP 越工作空间硬边界、或累计位移 $\lVert\Delta\vect{p}_t\rVert > 15$\,cm 任一触发时，episode 以大终止惩罚 $r_{\text{term}} = -10.0$ 结束;若 episode 安全存活满 $10$ 步则额外给予 $+5.0$ 完成奖励;折扣 $\gamma = 1.0$。\cref{tab:v3_returns} 列出几种典型场景的总回报：不动 $+10.0$ $>$ 小闪避 $\approx +9.7$ $>$ 大闪避 $\approx +8.5$ $\gg$ 碰撞或过度反应 $-10.0$。这一排序有三个关键性质：(i)~\emph{每步即时奖励非负}，存活永远优于提前终止，消除了 V2 的"快死"漏洞;(ii)~\emph{终止惩罚远大于任何存活轨迹的累积上限}（$|{-10.0}| \gg +10.0$），主动终止不是期望回报上的优解;(iii)~不动 $>$ 小闪避 $>$ 大闪避的软排序让策略在可以不动时倾向于不动（对齐"原地闪避"目标，消除了 V1 的"跑远"漏洞），不得不动时倾向于小幅动作。
 
 \begin{table}[htbp]
   \centering
