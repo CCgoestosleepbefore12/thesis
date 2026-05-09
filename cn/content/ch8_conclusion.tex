@@ -1,37 +1,35 @@
-% 第8章 总结与展望
+% 第7章 总结与展望
 
 \chapter{总结与展望}\label{ch:conclusion}
 
 \section{工作总结}\label{sec:summary}
 
-% 1. 将编码器偏差形式化为POMDP，偏差作为episode级隐变量
-% 2. 可观测性分析：证明外部位置信号是必要且充分的
-% 3. 观测增强将POMDP近似还原为MDP
-% 4. 随机偏差训练 + RLPD 在 $[0, 0.3]$ rad范围内达到92-100%
-% 5. 备份策略通过非负奖励设计保障HIL安全
-% 6. 消融实验直接验证理论预测
+本文围绕"工业机器人在编码器校准偏差下的在线适应"问题，提出基于分层模仿与强化学习的容错操作框架（标题：Hierarchical Imitation and Reinforcement Learning for Fault-Tolerant Manipulation）。三方面贡献概括如下。
+
+\textbf{贡献 1（理论）}：把编码器偏差形式化为 POMDP 隐变量，给出一源三效应的因果链建模，并以严格命题证明仅依赖基础观测时偏差不可辨识（\cref{prop:non_identifiable}）、引入独立外部位置观测后近似可辨识（\cref{prop:identifiable}）；进一步澄清"可辨识性 $\neq$ 可求解性"，推出随机偏差训练的必要性。
+
+\textbf{贡献 2（方法）}：设计 task $\oplus$ backup 双策略分层 $+$ sim/real 双端范式的容错操作框架。共享方法层（\cref{ch:task_policy}）含观测设计、随机偏差训练与共享网络架构；仿真侧用 HIL-SERL 完成 H1–H3 实验闭环（\cref{ch:sim_chapter}），真机侧用 BC $+$ HG-DAgger 部署（\cref{ch:real_chapter}）；备份策略由纯仿真 SAC $+$ DR 训练后直接迁移真机，运行时由 Hierarchical Supervisor 三态 FSM 与任务策略硬切换。范式选择由（观测模态 $\times$ 数据规模 $\times$ 安全约束）三轴决定，task / backup 双策略是该决策原则的两个实例。
+
+\textbf{贡献 3（实证）}：实现 B$+$D 双注入点编码器偏差注入，在 \texttt{pickup}、\texttt{wipe}、\texttt{pickandplace} 三个真机任务上完成 $4$ 列联合成功率矩阵评估（无 bias / 有 bias / $+$ backup 无 bias / $+$ backup 有 bias）。同时给出 HIL-SERL 真机失败的方法论级 negative result——SAC online 在小数据加稀疏奖励加 $10$\,Hz 真机吞吐下 actor 解冻后大幅漂移，为真机改用 BC $+$ HG-DAgger 提供实证支撑。
 
 \section{局限性}\label{sec:limitations}
 
-% 1. 外部定位依赖：需要~5mm精度的跟踪设备
-% 2. 单关节偏差（第4关节）：多关节尚未充分测试
-% 3. 仅固定偏差：未涉及时变漂移
-% 4. 仿真-真机差距：真机验证待完成（TODO: 更新）
-% 5. 任务复杂度：仅测试了抓取放置任务
+\begin{itemize}
+  \item \textbf{真机偏差闭环未完成}——14 维真机观测使用 \texttt{tcp\_true} 特权通道（\cref{subsec:real_obs}），实际绕开了\cref{prop:identifiable} 中"被污染编码器信号 $+$ 外部位置信号"的隐式辨识机制；真机 §6.5 的"有 bias"列仅验证特权信号通路下的端到端成功率，并非完整可辨识性闭环。
+  \item \textbf{物体定位为 placeholder}—— \texttt{environment\_state} 通道当前未接物体检测，目标定位完全依赖前视相机视觉特征。
+  \item \textbf{偏差类型受限}——本文仅覆盖 J1 单关节 $+$ 固定/随机两类 episode 内恒定偏差，未涉及温度漂移等时变隐变量与多关节耦合偏差。
+  \item \textbf{平台与任务规模}——单一 Franka Panda 平台 $+$ 三个厨房场景任务；范式选择决策原则的可推广性需在更多平台与任务上验证。
+  \item \textbf{HIL-SERL negative result 的范围}—— $N=1$ 单平台、$10$\,Hz 单吞吐条件下的观察，且"Q 表面平坦"作为根因仍是\emph{主导假设}而非确证（\cref{subsec:hilserl_failure}）；更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证。
+\end{itemize}
 
 \section{未来工作}\label{sec:future_work}
 
-% 高优先级：
-% - 显式偏差估计器：训练 $\hat{\vect{b}} = f(\vect{o}_{1:t})$ → 27D观测
-% - GRU上下文编码器：隐式多步偏差推断
-% - 去除外部定位依赖
-%
-% 中优先级：
-% - 多关节偏差实验
-% - 课程学习（逐步增大偏差范围）
-% - 噪声敏感性消融（1mm, 5mm, 10mm, 20mm）
-%
-% 低优先级：
-% - 时变/漂移偏差
-% - 其他故障类型（关节卡滞、执行器饱和）
-% - 更复杂的任务（双臂、接触丰富）
+\paragraph{真机偏差鲁棒性两步消融（最直接）}对应\cref{subsec:real_obs} 的范围限定，分两步把完整可辨识性闭环搬到真机：(i)~把真机 14 维观测中的 \texttt{tcp\_true} 替换为 \texttt{tcp\_biased}（即 $\text{FK}(\vect{q}+\vect{b})$）—— 按\cref{prop:non_identifiable} 应失败；(ii)~在 (i) 基础上补回编码器路径 $\vect{q}+\vect{b}$ —— 按\cref{prop:identifiable} 应恢复成功，与仿真 H2/H3 路径同构。两步消融落地后，真机层的 implicit-$\vect{b}$ 恢复机制即被实证。
+
+\paragraph{显式偏差估计器与上下文编码}本文采用端到端策略隐式辨识 $\vect{b}$；可探索显式估计器路径——在线最小二乘从雅可比反推（短期）或 RMA 风格 GRU 从多步动作-状态序列推断（中期），为策略提供 $\hat{\vect{b}}$ 直接输入，对应\cref{sec:pomdp_methods} 中提及的 RNN/GRU 隐式记忆路径。
+
+\paragraph{残差 RL 与离线 RL 真机对照}\cref{sec:residual_rl} 已指出本文未在真机做残差 RL 与 BC $+$ HG-DAgger 的系统对照；未来可补全 residual RL（基础控制器 $+$ RL 残差）与离线 RL（IQL/CQL 在 demo 上）作为 baseline，量化范式选择决策原则的边界。
+
+\paragraph{多关节 / 时变偏差与多故障类型}扩展到多关节耦合偏差、温度漂移类时变隐变量，以及编码器噪声、关节卡死、执行器退化等其他故障类型，验证框架的适用范围。
+
+\paragraph{物体检测接入与 generality 验证}把 \texttt{environment\_state} 通道接入物体检测器（YOLO / SAM 类）实现真值化；并在另一类机器人平台或更多任务上复现"sim/real 双端范式 $+$ 三轴决策原则"的可推广性。
