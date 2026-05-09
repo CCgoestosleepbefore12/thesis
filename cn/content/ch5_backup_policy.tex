@@ -361,7 +361,7 @@ V3b 几何升级\textbf{显著缓解}（hand\_collision $5\times$ 下降）但\e
 
 \section{仿真到真机的桥接}\label{sec:sim_to_real_bridge}
 
-上一节给出的仿真闭环为下一章真机部署提供两点凭据，但需对其作用范围作严格限定。\textbf{可辨识性命题（\cref{prop:identifiable}）已在\cref{sec:exp_ablation} 24D 消融中实证为信息论上"成功的信号路径"}——但需明确：真机首跑只取该路径中的\emph{特权一半}（外部独立 TCP \texttt{tcp\_true}），暂未投入被污染的编码器路径，故\cref{ch:real_chapter} 的成功率矩阵验证的是"sim 已证可行的成功信号路径在真机上仍能跑通"，而\emph{并非}\cref{prop:identifiable} "biased $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 联合可辨识"的真机闭环;后者的两步消融（先验证 \texttt{tcp\_biased} 单独失败、再验证 $+\vect{q}+\vect{b}$ 恢复成功）留作\cref{ch:conclusion} 的 future work。换言之，\textbf{sim 端 H2/H3 已闭环；real 端仅取该路径的"clean half"，full identifiability path 在真机的闭环未完成}。
+上一节给出的仿真闭环为下一章真机部署提供两点凭据，但需对其作用范围作严格限定。\textbf{可辨识性命题（\cref{prop:identifiable}）已在\cref{sec:exp_ablation} 24D 消融中实证为信息论上"成功的信号路径"}——但需明确：真机首跑只取该路径中的\emph{特权一半}（外部独立 TCP \texttt{tcp\_true}），暂未投入被污染的编码器路径，故\cref{ch:real_chapter} 的成功率矩阵验证的是"sim 已证可行的成功信号路径在真机上仍能跑通"，而\emph{并非}\cref{prop:identifiable} "biased $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 联合可辨识"的真机闭环;后者的两步消融（先验证 \texttt{tcp\_biased} 单独失败、再验证 $+\vect{q}+\vect{b}$ 恢复成功）留作\cref{ch:conclusion} 的 future work。换言之，\textbf{仿真侧 H2/H3 已闭环；真机侧仅取该路径的"clean half"，完整 identifiability path 在真机的闭环未完成}。
 
 \textbf{Backup 策略 \texttt{backup\_policy\_s1\_v3b\_300k} 直接用作真机 ckpt}（不重训），配套\cref{sec:backup_real_deploy} 的 Route A center-dist 几何对齐与 V3b 阈值 $D_\text{SAFE} = 0.40$\,m。需注意 V3$\to$V3b 几何升级是真机部署观察到的失效模式（V3 单球版肘/前臂撞）倒逼仿真升级，而真机 V3b 评估见\cref{subsec:exp_backup_real}\emph{尚为待数据状态}——sim V3b $95\%$ 存活率构成 real 评估的预期上界，gap 大小待测。HIL-SERL 在仿真中稳定收敛但真机失败的对照分析见\cref{subsec:hilserl_failure}（真机 negative result 复盘）。
 
