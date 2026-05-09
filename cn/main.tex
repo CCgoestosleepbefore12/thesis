@@ -132,6 +132,15 @@
 \newcommand{\real}{\mathbb{R}}
 \newcommand{\expect}{\mathbb{E}}
 
+% ===================== 浮动参数（避免图独占整页）=====================
+\renewcommand{\topfraction}{0.9}        % 页顶浮动占比上限（默认 0.7）
+\renewcommand{\bottomfraction}{0.7}     % 页底浮动占比上限（默认 0.3）
+\renewcommand{\textfraction}{0.1}       % 每页正文最小占比（默认 0.2）
+\renewcommand{\floatpagefraction}{0.85} % 浮动单独成页的最小占比阈值（默认 0.5；调高使图更难单独成页）
+\setcounter{topnumber}{3}               % 页顶最多浮动数（默认 2）
+\setcounter{bottomnumber}{2}            % 页底最多浮动数（默认 1）
+\setcounter{totalnumber}{4}             % 单页总浮动数（默认 3）
+
 % ===================== 正文 =====================
 \begin{document}
 

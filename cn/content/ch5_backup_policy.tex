@@ -25,9 +25,9 @@
 
 \paragraph{分布式训练架构。}\cref{fig:hilserl_arch} 示意训练系统的两个异步进程。Actor 进程持有策略权重副本，负责与仿真环境交互、接收 HIL 干预、把转移写入在线缓冲区;Learner 进程持有两个缓冲区与优化器，负责混合采样、计算 SAC 损失、更新 actor/critic 与温度参数，并定期把最新权重同步给 Actor。两侧通过 gRPC 通讯，使环境采样与梯度更新完全解耦——Learner 以最快速度执行梯度步，Actor 只需按固定的物理控制频率稳定收集转移，梯度计算不会阻塞 env step。该架构同时为日后真机训练保留通路（虽本文真机阶段最终采用 BC 与 HG-DAgger，详见\cref{sec:real_task_deploy}）。
 
-\begin{figure}[htbp]
+\begin{figure}[!htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig_5_1_hilserl_arch.png}
+  \includegraphics[width=0.7\textwidth]{fig_5_1_hilserl_arch.png}
   \caption{HIL-SERL 的 Actor-Learner 分布式架构。Actor 负责与环境交互、接收 HIL 干预、写入在线缓冲区;Learner 持有缓冲区与优化器，负责混合采样、SAC 更新并回推权重。两侧通过 gRPC 通讯，环境采样与梯度更新完全解耦。}
   \label{fig:hilserl_arch}
 \end{figure}

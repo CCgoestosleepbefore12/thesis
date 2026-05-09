@@ -63,9 +63,9 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 要理解偏差如何传播，首先梳理无偏差情况下 Franka Panda~等串联机械臂的标准控制与观测结构~\cite{siciliano2010robotics}。如\cref{fig:pipeline_ideal} 所示，机器人在一个控制周期内有三个模块显式依赖同一个编码器读数 $\vect{q}_{\text{measured}}$：\textbf{底层关节 PD 控制器}（对 Franka Panda 而言运行于其 FCI 的 $1$\,kHz 实时循环中~\cite{haddadin2022franka,frankaemika2024libfranka}）跟踪期望关节角；\textbf{任务层 OSC 控制器}通过 $\mat{J}(\vect{q}_{\text{measured}})$ 与 $\text{FK}(\vect{q}_{\text{measured}})$ 将任务空间误差映射为关节力矩；\textbf{观测模块}向上层策略返回 $\vect{q}_{\text{measured}}$ 与 $\text{FK}(\vect{q}_{\text{measured}})$。三个模块共享同一个编码器读数——这正是一个 $\vect{b}$ 能够同时污染控制与观测的结构性原因\footnote{本节假设真机使用由底层实时控制器执行的关节伺服；仿真环境中该底层循环通过直接设置初始关节位置进行简化，具体实现详见\cref{sec:sim_implementation}。}。
 
 % TODO[figure]: 后期美化此数据流图，见 docs/todo.md 第 1 项
-\begin{figure}[htbp]
+\begin{figure}[!htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig_3_1_pipeline_ideal.png}
+  \includegraphics[width=0.7\textwidth]{fig_3_1_pipeline_ideal.png}
   \caption[理想情况下的控制与观测数据流]{理想情况下 Franka Panda 的控制与观测数据流。三个下游模块（底层关节 PD、任务层 OSC、观测模块）均以同一个编码器读数 $\vect{q}_{\text{measured}}$ 作为输入。这一共享依赖是编码器偏差能够同时污染控制与观测的结构性原因。（示意图，后期将替换为精修版本。）}
   \label{fig:pipeline_ideal}
 \end{figure}
@@ -144,9 +144,9 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 三个效应虽然经由不同路径（PD 反馈、OSC 雅可比/FK、观测函数）产生，但\emph{全部源自同一个关节空间变量 $\vect{b}$}——这正是\cref{sec:pomdp} 把 $\vect{b}$ 建模为\emph{单一 episode 级隐变量}的直接依据。\cref{fig:causal_chain} 以图示方式总结这一耦合结构。
 
 % TODO[figure]: 后期美化此因果链总图，见 docs/todo.md 第 2 项
-\begin{figure}[htbp]
+\begin{figure}[!htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig_3_2_causal_chain.png}
+  \includegraphics[width=0.7\textwidth]{fig_3_2_causal_chain.png}
   \caption[编码器偏差的因果链]{编码器偏差 $\vect{b}$ 的因果链："一源三效应"结构。单个关节空间隐变量 $\vect{b}$ 通过三条结构上相互独立的路径——底层 PD 控制器的反馈回路、OSC 控制律中的雅可比与 FK、以及观测函数——同时产生三个可观测的效应。三个效应并非独立故障，而是同一隐变量在不同模块上的投影。（示意图，后期将替换为精修版本。）}
   \label{fig:causal_chain}
 \end{figure}
@@ -262,7 +262,7 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 
 与命题\ref{prop:non_identifiable} 相比，命题\ref{prop:identifiable} 的关键不同在于：$\vect{o}_{\text{real}}$ 绕开了被污染的编码器通道，直接提供了一个仅依赖 $\vect{q}_{\text{true}}$（而非 $\vect{q}_{\text{true}} + \vect{b}$）的"独立观测"，从而\emph{打破}了命题\ref{prop:non_identifiable} 证明中使用的平移对称性。在信息论视角下，$\vect{o}_{\text{real}}$ 与已有的位置类观测线性无关，恰好补足了原先缺失的一维辨识方向。其几何直觉如\cref{fig:identifiability} 所示。
 
-\begin{figure}[htbp]
+\begin{figure}[!htbp]
   \centering
   \begin{tikzpicture}[
     >={Stealth[length=2mm]},

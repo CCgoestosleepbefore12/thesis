@@ -70,9 +70,9 @@
 
 \cref{fig:obs_dataflow} 示意了 25 维观测在两条独立通路上的流动（污染标记见图中红色标签）。需要指出，25 维内部按角色可进一步分为\emph{辨识相关}与\emph{运行时安全}两部分：前者包含编码器路径全部 18 维加外部独立 TCP $\vect{o}_\text{real}$（共 21 维），是\cref{prop:identifiable} 所要求的可辨识性论证的全部依据——只需一路独立外部位置信号即可打破 $(\vect{q}_\text{true}, \vect{b})$ 的平移对称性；后者包含人手激活 $h_\text{active}$ 与位置 $\vect{p}_\text{hand}$ 共 4 维，仅服务于运行时与备份策略的距离触发切换，不参与可辨识性论证。两路联合观测使系统满足近似可辨识性的充分条件——策略原则上可通过比较 $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 的不一致隐式恢复 $\vect{b}$，并据此输出\cref{subsec:identifiability_vs_solvability} 所要求的条件补偿动作；其量化误差受 $\vect{o}_\text{real}$ 噪声 $\epsilon = 5\,$mm 与机械臂雅可比条件数 $\kappa(\mat{J})$ 限制，具体上界本文不展开。本文不对估计结构施加显式约束（如卡尔曼滤波或专门的 $\vect{b}$ 预测头），而交由端到端优化自行组织。
 
-\begin{figure}[htbp]
+\begin{figure}[!htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig_4_1_obs_dataflow.png}
+  \includegraphics[width=0.7\textwidth]{fig_4_1_obs_dataflow.png}
   \caption{25 维观测空间的信息通路示意。编码器路径（左，18D）中的关节角与由其导出的 TCP 位置被偏差 $\vect{b}$ 污染，关节速度与夹爪开度不受影响；外部观测路径（右，7D）包含独立 TCP 与人手信息，全部与编码器解耦。两路信号在策略网络处汇合，策略原则上可通过 $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 之间的不一致隐式恢复 $\vect{b}$。}
   \label{fig:obs_dataflow}
 \end{figure}
@@ -109,9 +109,9 @@
 
 本章描述的任务策略在仿真与真机两端共享同一套网络架构——一个\emph{共享编码器}、三个\emph{独立网络头}与对应的\emph{训练损失定义}。本节依次给出这些具体形式（\cref{fig:network_arch}）；具体训练协议（demo warmup、在线混合采样、HG-DAgger 迭代等）分别见\cref{sec:sim_task_train}（仿真 HIL-SERL）与\cref{sec:real_task_deploy}（真机 BC + HG-DAgger）。
 
-\begin{figure}[htbp]
+\begin{figure}[!htbp]
   \centering
-  \includegraphics[width=0.85\textwidth]{fig_4_2_network_arch.png}
+  \includegraphics[width=0.7\textwidth]{fig_4_2_network_arch.png}
   \caption{任务策略的网络架构。三路输入（仿真 $25$ 维 / 真机 $14$ 维状态 $+$ 前视、腕部 $128\times 128$ RGB）分别经各自的编码器处理后，按通道拼接为 $768$ 维的共享 feature $\vect{h}$；三个头共享 $\vect{h}$ 作为输入但输出与训练损失各异——连续 Actor 产生 6 维 Cartesian 末端动作、Twin Critic 输出两个标量 Q 值（取最小以抑制高估）、离散 Gripper Critic 输出 3 维 Q 值选择夹爪动作。DINOv3-S 主干在训练中保持冻结，只更新其后的投影层、状态编码器与三个头。仿真 HIL-SERL 训练四个头的所有损失，真机 BC 阶段仅训练连续 Actor（critic 与温度参数作为 ckpt schema 占位）。}
   \label{fig:network_arch}
 \end{figure}
