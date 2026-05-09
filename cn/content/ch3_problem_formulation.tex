@@ -305,7 +305,57 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 \end{equation}
 因此 $(\vect{q}_{\text{true}}, \vect{b})$ 由 $\vect{o}'$ 唯一确定。\end{proof}
 
-与命题\ref{prop:non_identifiable} 相比，命题\ref{prop:identifiable} 的关键不同在于：$\vect{o}_{\text{real}}$ 绕开了被污染的编码器通道，直接提供了一个仅依赖 $\vect{q}_{\text{true}}$（而非 $\vect{q}_{\text{true}} + \vect{b}$）的"独立观测"，从而\emph{打破}了命题\ref{prop:non_identifiable} 证明中使用的平移对称性。在信息论视角下，$\vect{o}_{\text{real}}$ 与已有的位置类观测线性无关，恰好补足了原先缺失的一维辨识方向。
+与命题\ref{prop:non_identifiable} 相比，命题\ref{prop:identifiable} 的关键不同在于：$\vect{o}_{\text{real}}$ 绕开了被污染的编码器通道，直接提供了一个仅依赖 $\vect{q}_{\text{true}}$（而非 $\vect{q}_{\text{true}} + \vect{b}$）的"独立观测"，从而\emph{打破}了命题\ref{prop:non_identifiable} 证明中使用的平移对称性。在信息论视角下，$\vect{o}_{\text{real}}$ 与已有的位置类观测线性无关，恰好补足了原先缺失的一维辨识方向。其几何直觉如\cref{fig:identifiability} 所示。
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    >={Stealth[length=2mm]},
+    font=\small,
+    axis/.style={->, thick},
+    eqline/.style={red!70!black, thick, dashed},
+    realline/.style={blue!70!black, thick},
+    candpt/.style={fill=red!70!black, draw=red!70!black, circle, inner sep=1.5pt},
+    soln/.style={fill=green!50!black, draw=green!30!black, line width=0.8pt, circle, inner sep=2.5pt},
+  ]
+    % ===== Left panel: Prop 1 =====
+    \begin{scope}[shift={(0,0)}]
+      \draw[axis] (0, 0) -- (4.7, 0) node[right, font=\scriptsize] {$\vect{q}_\text{true}$};
+      \draw[axis] (0, 0) -- (0, 4.5) node[above, font=\scriptsize] {$\vect{b}$};
+
+      \draw[eqline] (0.5, 3.5) -- (3.5, 0.5);
+      \node[font=\scriptsize, color=red!70!black, anchor=west] at (3.55, 0.4) {$\vect{q}_\text{true} + \vect{b} = c$};
+
+      \node[candpt] at (1.0, 3.0) {};
+      \node[candpt] at (1.7, 2.3) {};
+      \node[candpt] at (2.5, 1.5) {};
+      \node[candpt] at (3.2, 0.8) {};
+
+      \node[anchor=north, font=\bfseries] at (2.3, -0.4) {(a) 基础观测};
+      \node[anchor=north, font=\scriptsize, align=center] at (2.3, -0.95) {等价线上所有 $(\vect{q}_\text{true}, \vect{b})$\\ 产生相同观测 $\vect{o}$（命题~\ref{prop:non_identifiable}）};
+    \end{scope}
+
+    % ===== Right panel: Prop 2 =====
+    \begin{scope}[shift={(7.5,0)}]
+      \draw[axis] (0, 0) -- (4.7, 0) node[right, font=\scriptsize] {$\vect{q}_\text{true}$};
+      \draw[axis] (0, 0) -- (0, 4.5) node[above, font=\scriptsize] {$\vect{b}$};
+
+      \draw[eqline] (0.5, 3.5) -- (3.5, 0.5);
+      \node[font=\scriptsize, color=red!70!black, anchor=west] at (3.55, 0.4) {$\vect{q}_\text{true} + \vect{b} = c$};
+
+      \draw[realline] (1.7, -0.05) -- (1.7, 4.2);
+      \node[font=\scriptsize, color=blue!70!black, anchor=south, align=center] at (1.7, 4.2) {$\vect{q}_\text{true} = \text{FK}^{-1}(\vect{o}_\text{real})$};
+
+      \node[soln] (sol) at (1.7, 2.3) {};
+      \node[font=\scriptsize, color=green!30!black, anchor=west] at (2.0, 2.4) {唯一解};
+
+      \node[anchor=north, font=\bfseries] at (2.3, -0.4) {(b) 增强观测（含 $\vect{o}_\text{real}$）};
+      \node[anchor=north, font=\scriptsize, align=center] at (2.3, -0.95) {独立约束打破对称\\交于唯一点（命题~\ref{prop:identifiable}）};
+    \end{scope}
+  \end{tikzpicture}
+  \caption{可辨识性的几何示意。横轴 $\vect{q}_\text{true}$ / 纵轴 $\vect{b}$ 为抽象一维表示。\textbf{(a)} 仅依赖基础观测时，所有满足 $\vect{q}_\text{true} + \vect{b} = c$（红色虚线）的 $(\vect{q}_\text{true}, \vect{b})$ 对都产生相同的观测 $\vect{o}$，$\vect{\delta}$ 方向上的平移对称性使原问题不可辨识。\textbf{(b)} 引入独立外部位置观测后，由\cref{eq:recover_q}，$\vect{q}_\text{true}$ 被锁定到 $\text{FK}^{-1}(\vect{o}_\text{real})$（蓝色实线）；该约束与等价线的交点唯一（绿色圆点），即\cref{prop:identifiable} 给出的可辨识解。$\sigma > 0$ 时蓝线变为有限宽度的"带"，唯一性退化为后验上的最大似然估计——这正是\cref{subsec:identifiability_vs_solvability} 中"平均性补偿"的几何来源。}
+  \label{fig:identifiability}
+\end{figure}
 
 \subsection{可辨识性 \texorpdfstring{$\neq$}{≠} 可求解性}\label{subsec:identifiability_vs_solvability}
 
