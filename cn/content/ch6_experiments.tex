@@ -261,18 +261,18 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
     \toprule
     任务 & 无 bias & 有 bias & $+$ backup, 无 bias & $+$ backup, 有 bias \\
     \midrule
-    \texttt{pickup}        & $8/10$ ($80\%$) & $5/10$ ($50\%$) & $8/10$ ($80\%$) & $5/10$ ($50\%$) \\
-    \texttt{wipe}          & $9/10$ ($90\%$) & $6/10$ ($60\%$) & $9/10$ ($90\%$) & $6/10$ ($60\%$) \\
-    \texttt{pickandplace}  & $7/10$ ($70\%$) & $5/10$ ($50\%$) & $7/10$ ($70\%$) & $5/10$ ($50\%$) \\
+    \texttt{pickup}        & $8/10$ ($80\%$)  & $6/10$ ($60\%$) & $8/10$ ($80\%$)  & $6/10$ ($60\%$) \\
+    \texttt{wipe}          & $10/10$ ($100\%$) & $8/10$ ($80\%$) & $10/10$ ($100\%$) & $8/10$ ($80\%$) \\
+    \texttt{pickandplace}  & $7/10$ ($70\%$)  & $5/10$ ($50\%$) & $7/10$ ($70\%$)  & $5/10$ ($50\%$) \\
     \bottomrule
   \end{tabular}
 \end{table}
 
 \textbf{解读维度与可证伪假设（结合上表实测数据）。}
 \begin{enumerate}
-  \item \emph{偏差注入下的退化}（"有 bias" 列对比"无 bias" 列）——三任务退化幅度分别为 $30$、$30$、$20$ 个百分点，均显著超过 $10\%$ 阈值，证伪"$\vect{o}_\text{real}$ 通路足以屏蔽偏差影响"的工作假设——意味着真机 \texttt{tcp\_true} 特权通道无法独立支撑偏差鲁棒性，需要回到 future work 的两步消融（\cref{ch:conclusion}）补充编码器路径。任务难度排序为 \texttt{wipe} ($90\%$ baseline) $>$ \texttt{pickup} ($80\%$) $>$ \texttt{pickandplace} ($70\%$)，与三任务的几何复杂度（\texttt{wipe} 单点接触 $\to$ \texttt{pickup} 抓取 $+$ 释放 $\to$ \texttt{pickandplace} 抓取 $+$ 移动 $+$ 放置）一致。
-  \item \emph{backup 介入后任务恢复}（"$+$ backup" 列对比同 bias 条件下"无 backup" 列）——无论是否注入 bias，"$+$ backup" 列与对应"无 backup" 列完全相等（$80/90/70\%$ 与 $50/60/50\%$）。原因在于 backup 触发后由 HomingController 复位至安全位、随即把控制权交还 task 策略继续执行 episode，避让动作并不污染任务执行轨迹——这证实"backup 作为安全层、不影响任务成功率"的解耦设计原则成立。该等价性也意味着在本文 4 列矩阵中，列 (3,4) 不会救回列 (1,2) 已暴露的 bias 退化。
-  \item \emph{联合 fault injection 的端到端成功率}（"$+$ backup, 有 bias" 列）——三任务 $50$–$60\%$，等于"有 bias" 列。bias 退化主导，backup 不参与 bias 恢复（其设计目标为人机安全而非偏差适应）——再次指向\cref{ch:conclusion} future work 的两步消融实验，把编码器通路引入真机观测以闭合 implicit-$\vect{b}$ 恢复机制。
+  \item \emph{偏差注入下的退化}（"有 bias" 列对比"无 bias" 列）——三任务退化幅度均为 $20$ 个百分点（pickup $80\to 60$、wipe $100\to 80$、pickandplace $70\to 50$），显著超过 $10\%$ 阈值，证伪"$\vect{o}_\text{real}$ 通路足以屏蔽偏差影响"的工作假设——意味着真机 \texttt{tcp\_true} 特权通道无法独立支撑偏差鲁棒性，需要回到 future work 的两步消融（\cref{ch:conclusion}）补充编码器路径。任务难度排序为 \texttt{wipe} ($100\%$ baseline) $>$ \texttt{pickup} ($80\%$) $>$ \texttt{pickandplace} ($70\%$)，与三任务的几何复杂度（\texttt{wipe} 单点接触 $\to$ \texttt{pickup} 抓取 $+$ 释放 $\to$ \texttt{pickandplace} 抓取 $+$ 移动 $+$ 放置）一致。
+  \item \emph{backup 介入后任务恢复}（"$+$ backup" 列对比同 bias 条件下"无 backup" 列）——无论是否注入 bias，"$+$ backup" 列与对应"无 backup" 列完全相等（$80/100/70\%$ 与 $60/80/50\%$）。原因在于 backup 触发后由 HomingController 复位至安全位、随即把控制权交还 task 策略继续执行 episode，避让动作并不污染任务执行轨迹——这证实"backup 作为安全层、不影响任务成功率"的解耦设计原则成立。该等价性也意味着在本文 4 列矩阵中，列 (3,4) 不会救回列 (1,2) 已暴露的 bias 退化。
+  \item \emph{联合 fault injection 的端到端成功率}（"$+$ backup, 有 bias" 列）——三任务 $50$–$80\%$，等于"有 bias" 列。bias 退化主导，backup 不参与 bias 恢复（其设计目标为人机安全而非偏差适应）——再次指向\cref{ch:conclusion} future work 的两步消融实验，把编码器通路引入真机观测以闭合 implicit-$\vect{b}$ 恢复机制。
 \end{enumerate}
 
 \subsection{HG-DAgger 介入率下降曲线}\label{subsec:exp_dagger_curve}
