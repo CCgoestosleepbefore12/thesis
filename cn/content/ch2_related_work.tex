@@ -2,75 +2,44 @@
 
 \chapter{相关工作}\label{ch:related_work}
 
-% 写作原则：
-% Ch.2 = 领域景观 + 对比替代方案 + 定位本文选择；Ch.4–6 = 本文具体配置。
-% 不重复 §4–§6 的技术配置细节；以对比和定位为主；引用方法章做细节指针。
-% 标题对位"Hierarchical IL+RL"：IL 在前 RL 在后，呼应论文叙事重心。
+本章按本文方法的逻辑层次综述相关文献：从机器人容错控制（\cref{sec:ftc}）与 POMDP 求解方法（\cref{sec:pomdp_methods}）开始，介绍传统控制理论与部分可观测决策的经典框架;然后给出机器人 RL 中的残差结构（\cref{sec:residual_rl}）、鲁棒 RL 与域随机化（\cref{sec:robust_rl_dr}）;接着讨论模仿学习与人在回路（\cref{sec:il_hil}），这是本文真机部署的方法基础;最后给出安全 RL 与 Reward hacking 背景（\cref{sec:safe_rl}），为\cref{sec:backup_reward} 备份策略奖励演化分析提供概念支撑。本章侧重\emph{领域景观与方法定位}，不重复\cref{ch:task_policy}–\cref{ch:real_chapter} 的具体配置细节。
 
 \section{机器人容错控制（FDI/FTC）}\label{sec:ftc}
 
-% Blanke 2016 FDI/FTC 教材：故障检测、隔离与重构的经典框架
-% - 基于模型方法：解析冗余、观测器、参数辨识
-% - 数据驱动方法：信号处理、机器学习
-% 局限：
-%   (i) 需要明确故障模型（编码器偏差通常被忽略）
-%   (ii) 以"保持稳定"而非"完成任务"为目标
-%   (iii) 检测+切换路径常需停机
-% 空白：尚无在线学习的编码器校准偏差适应方法
-% 本文定位：以"在线适应"替代"事后切换"
+故障检测、隔离与重构（Fault Detection, Isolation, and Reconstruction，FDI/FTC）是机器人容错控制的经典框架~\cite{blanke2016diagnosis}。FDI 通过解析冗余、状态观测器或参数辨识检测系统中的故障并定位故障源;FTC 在检测到故障后通过控制律重构维持系统稳定。该框架在传感器漂移、执行器卡死等问题上有成熟应用，但应用于本文关注的"未知幅值的编码器系统性偏差"时存在三个关键局限：(i)~需要明确的故障模型——本文涉及的"更换部件未重标"等偏差来源缺乏先验模型;(ii)~检测与切换的目标是\emph{保持稳定}而非\emph{完成任务}—— FTC 框架下偏差被检测后机器人通常停机或退化运行，但本文需要的是在偏差存在的情况下仍能完成抓取与放置;(iii)~FDI 通常依赖故障前后系统行为的统计差异，对 episode 内恒定的隐变量偏差检测能力有限。Haddadin 等人~\cite{haddadin2017robot} 综述了机器人碰撞检测与隔离问题，亦集中在"碰撞事件"而非"碰撞后残留偏差"上。本文采用与 FDI/FTC 不同的路径——把偏差视为环境分布的一部分，让策略在训练时见过偏差从而在线适应，绕开"先检测、后切换"的两阶段范式。
 
 \section{POMDP 求解方法}\label{sec:pomdp_methods}
 
-% Kaelbling 1998：信念状态方法（POMDP 的经典精确解法）
-% Hausknecht 2015 DRQN：RNN/GRU 隐式记忆，应对部分可观测
-% 仅作为文献背景，不作对比论断
-% 本文定位：观测增强 + 端到端 RL，不依赖显式信念状态推断
-% 与 RNN 路径的对比留作 Ch.8 future work（GRU context encoder）
+部分可观测 MDP 的求解长期是强化学习与序贯决策的核心难题。Kaelbling 等人~\cite{kaelbling1998planning} 提出基于信念状态的精确求解方法，将 POMDP 转化为信念空间上的 MDP 求解;这类方法在小规模离散问题上有理论保证但受维度灾难限制，难以扩展到本文使用的高维连续状态空间。Hausknecht 与 Stone~\cite{hausknecht2015deep} 提出深度循环 Q 网络（DRQN），用 RNN/LSTM 隐式记忆历史观测，在 Atari 等部分可观测任务上取得效果。本文采用的"观测增强加端到端 RL"路径与上述两类方法本质不同——不依赖显式信念状态推断也不依赖循环网络，而是通过引入独立外部观测使 POMDP 在信息论意义上近似还原为 MDP（详见\cref{sec:observability}）。RNN/GRU 隐式记忆路径作为 future work 在\cref{ch:conclusion} 提及。
 
 \section{机器人强化学习与残差结构}\label{sec:residual_rl}
 
-% Johannink 2019 残差 RL：硬编码基础控制器 + RL 学残差修正
-% - 在偏差场景下作为本文的潜在 baseline
-% - 但残差 RL 仍依赖底层控制器使用编码器读数 → 同样受偏差污染
-% 其他结构化 RL：分层 RL、option framework
-% 本文定位：未与残差 RL 在真机做系统对照，留作未来工作
+残差强化学习（Residual RL）由 Johannink 等人~\cite{johannink2019residual} 提出：先用一个手写的基础控制器完成大部分动作，再用 RL 学习一个残差策略对基础控制器输出做小幅修正。残差 RL 在很多机器人任务上能显著降低样本复杂度并提升训练稳定性，是 sim-to-real 领域常用的折中方案——把可解析建模的部分交给基础控制器，把难以建模的扰动交给 RL。
+
+本文未采用残差 RL 主要基于以下考虑：编码器偏差污染的恰恰是基础控制器使用的关节读数（雅可比与正运动学），因此基础控制器本身在偏差下输出错误，残差 RL 需要"修正一个本身错误的输出"，效果不易保证。本文未在真机上做残差 RL 与 BC 加 HG-DAgger 的系统对照，留作未来工作（详见\cref{ch:conclusion}）。
 
 \section{鲁棒强化学习与域随机化}\label{sec:robust_rl_dr}
 
-% 鲁棒 MDP / 对抗 RL：worst-case 优化
-% Tobin 2017：视觉域随机化，sim-to-real 主流方案
-%   - 视觉 sim2real gap 的既定难题
-% 状态空间 DR 的成功案例：用作 §5.3 backup 范式（DR on 位置噪声/延迟）的支撑
-% 本文定位：偏差随机化是对隐变量的"必须 condition" 类型 DR
-%   - 区别于 Tobin 视觉 DR 的"应被忽略"类型（详见 §4.3）
+域随机化（Domain Randomization，DR）是缩小 sim-to-real 差距的主流方案。Tobin 等人~\cite{tobin2017domain} 在物体姿态估计任务上提出视觉 DR——通过随机化纹理、光照、相机位姿等参数，使策略对视觉外观差异鲁棒;后续工作扩展到状态空间 DR（位置噪声、控制延迟、动力学参数），在轮足机器人、无人机等场景取得 sim-to-real 成功。
+
+本文使用的"随机偏差训练"（详见\cref{sec:random_bias}）在形式上与 DR 同源——两者都依赖"训练时让策略见过部署分布的样本"这一基本思路，但需要指出两者在信息论上的本质区别：Tobin 等人随机化的视觉参数对策略而言是\emph{冗余变量}（应被忽略，策略学到的应是 invariance），而本文随机化的偏差 $\vect{b}$ 是策略\emph{必须 condition} 的隐变量——按\cref{subsec:identifiability_vs_solvability} 的条件补偿要求，最优策略对不同 $\vect{b}$ 必须输出不同动作。两者是相反的信息论范式（不变性学习 vs 条件补偿学习），仅在"训练分布覆盖部署分布"这一表面思路上同源。状态空间 DR 在本文\cref{sec:backup_training} 备份策略训练中作为成熟方案被使用——位置噪声、速度抖动、检测延迟等低维状态扰动通过 DR 即可覆盖 sim-to-real gap，这与任务策略需要 BC 加 HG-DAgger 真机模仿的视觉路径形成对照。
 
 \section{模仿学习与人在回路}\label{sec:il_hil}
 
-% IL 在前（呼应论文标题"Hierarchical IL+RL"，本文真机采用）
-% - 行为克隆 BC：纯监督学习，简单但 OOD 失败
-% - DAgger (Ross 2011)：query-by-policy 范式
-% - HG-DAgger (Kelly 2019)：human-initiated 介入，本文真机最终采用
-% - HIL-SERL (Luo 2025, Science Robotics)：本文仿真侧采用
-%   - RLPD (Ball 2023) 为底层算法
-% 对比维度：
-%   - 纯在线 SAC / pure BC / DDPGfD / vanilla DAgger / HG-DAgger / HIL-SERL
-% 本文定位（双端选择）：
-%   - sim 端 HIL-SERL 验证理论（§4.4 + §5.2）
-%   - real 端 BC + HG-DAgger 部署（§6.2）
-%   - 真机 HIL-SERL 失败的方法论级 negative result（§6.2.5）
-% 不重复 §4.4 / §5.2 / §6.2 的技术配置细节
+模仿学习（Imitation Learning，IL）与强化学习（RL）的人在回路（Human-in-the-Loop，HIL）变体共同构成本文真机部署的方法基础。
+
+\textbf{行为克隆（Behavior Cloning，BC）}是最简的 IL 方法——在专家演示数据上做监督学习，把状态映射到动作。BC 实现简单、训练稳定，但在 OOD 状态下行为未定义（compounding error 问题），通常需要大量演示或额外正则化。Ross 等人提出的 \textbf{DAgger}（Dataset Aggregation）~\cite{ross2011dagger} 是经典改进——策略部署时在新状态上 query 专家、把专家动作合并入数据集重训，迭代直至收敛。DAgger 的关键限制是 query 由策略发起（query-by-policy）——在策略尚未稳定时频繁要求专家在意外状态下给出动作，对人类专家不友好。
+
+\textbf{HG-DAgger}（Human-Gated DAgger）~\cite{kelly2019hgdagger} 是 DAgger 的人类发起变种——介入触发由人决定（human-initiated）：操作员只在策略失败模式上介入，介入帧合并入下一轮重训。HG-DAgger 相对 DAgger 的优势是介入数据更聚焦于策略真正薄弱的状态，且对人类专家的认知负荷更友好。本文真机阶段采用 HG-DAgger 作为最终方案。
+
+\textbf{HIL-SERL}~\cite{luo2025hilserl} 是近年发表的人在回路 RL 框架，本质上是 RLPD~\cite{ball2023rlpd}（Soft Actor-Critic 加离线演示缓冲区加在线缓冲区 50/50 混合采样）的扩展——在 RLPD 之上把人在回路干预作为持续训练数据源贯穿整个 online 阶段，干预转移与原始 demo 同等地位回注离线缓冲区。HIL-SERL 在 Luo 等人原文的多个真机操控任务上取得突出效果，依赖于真机较高的吞吐量让 critic 通过持续 online interaction 在线 calibrate Q 表面。
+
+\textbf{本文双端选择}：仿真侧采用 HIL-SERL（\cref{sec:sim_task_train}）——仿真吞吐量高、bias 注入可控，HIL-SERL 完整收敛并验证 H1–H3;真机侧改用 BC 加 HG-DAgger（\cref{sec:real_task_deploy}）——本文真机条件下（$10$\,Hz 控制频率、单 episode $\le 30$\,s、$50$ demo 量级），HIL-SERL 的 SAC online 阶段 actor 解冻后大幅漂移（\cref{subsec:hilserl_failure} 详细复盘），HG-DAgger 不依赖 critic、调参面更小，在小数据真机场景显著更稳。这一双端选择本身是本文方法论级贡献——\textbf{算法选择由观测模态、数据规模、硬件吞吐共同决定}。
 
 \section{安全强化学习与 Reward Hacking 背景}\label{sec:safe_rl}
 
-% 约束 MDP / 安全 RL：Constrained MDP, CPO, Lagrangian methods
-% Kiemel 2024：非负即时奖励 + 大终止惩罚
-%   - §5.3.4 V3 reward 设计的直接来源
-% 分层 RL 中的备份/恢复策略：
-%   - Kiemel 2024 backup-as-safety-layer 思路
-%   - 本文 §5.3.2 沿用"预先训练 backup、运行时切换"框架
-% Reward hacking / reward misspecification 概念背景：
-%   - Skalse 2022 等分类
-%   - 用作 §5.3.4 V1 跑远 / V2 快死 reward hacking 案例分析的语境
-% 本文定位：
-%   - V1/V2 是典型 reward hacking 的两种新案例（§5.3.4 实证）
-%   - V3b 几何升级是真机失效模式倒逼仿真升级的案例
+安全强化学习关注在训练或部署过程中保证系统不违反安全约束。约束 MDP（Constrained MDP）与 CPO（Constrained Policy Optimization）等方法通过 Lagrangian 多项式或拒绝采样等技术显式处理约束。本文未直接采用约束 MDP——本文的安全需求（人机协同避让）通过\emph{分层结构}（任务策略 $+$ 备份策略 $+$ 运行时距离触发硬切换，详见\cref{sec:backup_paradigm}）而非约束优化实现，这更符合工业部署场景的工程可解释性需求。
+
+Kiemel 等人~\cite{kiemel2024safe} 在工业机器人安全 RL 中提出 \emph{非负即时奖励 $+$ 大终止惩罚} 的奖励结构原则，用于训练 backup-as-safety-layer 的避让策略。本文\cref{sec:backup_reward} 备份策略奖励 V3 直接继承这一原则，并在 V1（接近度奖励，策略学会跑远）$\to$ V2（全负奖励，策略学会快速终止）$\to$ V3（非负即时加大终止惩罚）的三次迭代中实证了"奖励设计若不满足该原则，策略会通过 reward hacking 找到设计意图之外的最优解"。
+
+\textbf{Reward hacking} 概念指策略在最大化奖励信号的同时违背设计意图——典型表现是策略找到了"提升奖励但不真正完成任务"的捷径行为。Reward hacking 是奖励工程中的经典问题，在大型语言模型对齐与机器人 RL 领域均被广泛讨论。本文\cref{sec:backup_reward} V1 与 V2 的两次失败迭代提供了避让任务上的两个具体案例——V1 直接奖励"远离障碍物"导致策略学会跑远而非原地闪避;V2 全负奖励让"快速终止"在期望回报上优于"完成存活"。这两个案例与 V3 设计原则的对照，构成本文奖励设计的实证主线。

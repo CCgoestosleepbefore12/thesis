@@ -4,52 +4,30 @@
 
 \section{研究背景与动机}\label{sec:background}
 
-% 工业机器人编码器故障的现实背景
-% - 5 种偏差来源（详见 §3.1 Tab）：
-%   出厂标定残差 ~10^-3 (实证) / 温漂 ~10^-3-10^-2 / 更换部件未重标 ~10^-1
-%   / 碰撞后错位 >=10^-1 / 编码器噪声 ~10^-3
-% - 现有方案的不足：
-%   (i) 停机重标 → 代价高、影响产线
-%   (ii) 传统 FDI/FTC → 需明确故障模型 + 以"保持稳定"非"完成任务"为目标
-% - 需求：在不停机的前提下在线适应未知编码器偏差
+工业机器人在装配、抓取、人机协同等任务中的可靠性高度依赖于关节编码器的准确性。无论是底层关节伺服、笛卡尔阻抗控制、还是上层任务规划，控制律与观测模块都以编码器读数 $\vect{q}_{\text{measured}}$ 作为反馈输入，并通过正运动学与雅可比矩阵把关节空间映射到任务空间~\cite{siciliano2010robotics}。然而真实部署中编码器与真实关节角度之间普遍存在系统性偏差 $\vect{b}$，使得 $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$。该偏差可由出厂标定残差、温度漂移、更换部件未重标、碰撞后错位、电磁干扰等多种机制引入（详细分类与典型量级见\cref{sec:bias_sources}），其中"更换部件未重标"与"碰撞后错位"两类偏差量级可达 $0.1$\,rad 以上，足以让原本可靠的策略在执行精细任务时显著退化。
+
+针对此类偏差，工业实践通常采取两类应对：(i)~\emph{停机重新标定}~\cite{kana2022fast,gong2000nongeometric}——精度高但需中断生产、影响产线节拍;(ii)~\emph{传统容错控制}（FDI/FTC，\cite{blanke2016diagnosis}）——依赖明确的故障模型且以"保持稳定"而非"完成任务"为目标，在"未知量级的隐变量偏差"这类问题上往往无能为力。本文采取与两类传统方案不同的路径：\textbf{在不停机的前提下，让策略在训练阶段就见过多种偏差，从而在线适应未知的校准偏差。}这一思路要求重新审视控制问题的形式化结构（偏差作为隐变量使 MDP 退化为 POMDP）、观测设计（如何让策略隐式辨识偏差）、训练范式（仿真验证与真机部署如何分工），以及人机安全（HIL 训练期间的备份保障）——这些问题构成本文的研究主题。
 
 \section{问题陈述}\label{sec:problem_statement}
 
-% 核心观察：编码器偏差使控制问题从 MDP 退化为 POMDP
-% - 单一故障源 → 三重同时效应（初始偏移、控制偏差、感知偏差）→ §3.2
-% - 智能体无法观测真实关节角度 → 部分可观测 → §3.3
-% - 信息论上需观测增强才能恢复可辨识性 → §3.4 (Prop 1, Prop 2)
-% 额外挑战：
-% - 视觉 sim-to-real gap 限制纯仿真训练 → 部署需在真机继续学习
-% - 真机数据稀缺 + 稀疏奖励 → SAC online 不收敛 (§6.2.5 negative result)
-% - HIL 训练引入人机安全问题 → 需备份避让策略 (§5.3, §6.3)
+引入未知偏差 $\vect{b}$ 后，原本的 MDP 在三个层面同时被破坏：
+
+\textbf{部分可观测性。}单一偏差源沿三条独立路径产生效应——初始位置偏移（PD 控制律稳态结果偏离 $\vect{q}_{\text{home}}$）、控制偏差（任务空间力矩计算基于错误的雅可比）、感知偏差（关节读数与正运动学末端位姿同时被污染）。三种效应均使智能体无法直接观测真实关节状态，控制问题从 MDP 退化为 POMDP。\cref{ch:problem_formulation} 将证明：仅依赖基础本体感觉观测时偏差不可辨识（\cref{prop:non_identifiable}），引入独立外部位置观测后偏差可由观测唯一恢复（\cref{prop:identifiable}）。
+
+\textbf{部署条件约束。}视觉 sim-to-real gap 使纯仿真训练加直接迁移在真机上失效;真机数据采集成本高，可用 demo 量级 $50$–$200$ 条;稀疏奖励下 SAC online 训练在小数据条件下 actor 解冻后大幅漂移（详见\cref{subsec:hilserl_failure}）。这些约束共同决定了"仿真验证加真机模仿部署"双端范式——仿真侧用 RL 验证理论可行性，真机侧用 IL（行为克隆加介入修正）完成部署。
+
+\textbf{人机协同安全。}真机部署涉及人手间歇进入工作空间——HIL 训练时操作者干预、生产部署时工人接近——需要一个备份避让策略与任务策略协同，在距离阈值触发时接管控制、避让结束后交还。备份策略本身需在不引入额外不安全因素的前提下训练，本文采用纯仿真 SAC 加域随机化的方案。
 
 \section{论文贡献}\label{sec:contributions}
 
-% 三个主要贡献（对应论文标题 Hierarchical IL+RL for Fault-Tolerant Manipulation）：
-%
-% (1) POMDP 形式化与可观测性分析（理论贡献，§3）
-%   - 编码器偏差的因果链建模（一源三效应）
-%   - 严格命题：基础观测下不可辨识 (Prop 1) / 增强观测下唯一可恢复 (Prop 2)
-%   - 可辨识性 ≠ 可解性的澄清 + 真机简化的范围限定
-%
-% (2) 分层模仿与强化学习的容错操作框架（方法+实证贡献，§4-§6）
-%   - 共享方法层：25D 仿真观测 + 随机偏差训练 + DINOv3-S 共享网络架构
-%   - sim 端 HIL-SERL 验证理论：H1-H3 实验闭环
-%   - real 端 BC + HG-DAgger 部署：避开 SAC 在小数据真机的 actor 漂移
-%   - task ⊕ backup 双策略分层：运行时距离判据硬切换
-%
-% (3) 真机三任务在编码器偏差注入下的端到端验证（实证贡献，§6.4）
-%   - 三任务 × 4 列联合成功率矩阵（无 bias / 有 bias / +backup × 2）
-%   - HIL-SERL 真机失败的方法论级 negative result
-%   - V3→V3b 几何升级是真机失效模式倒逼仿真升级的案例
+本文的核心贡献围绕标题 "Hierarchical Imitation and Reinforcement Learning for Fault-Tolerant Manipulation" 展开，分三点：
+
+\textbf{贡献 1：编码器偏差的 POMDP 形式化与可观测性分析}（\cref{ch:problem_formulation}）。本文给出一源三效应的因果链建模、POMDP 七元组形式化，并以严格命题证明：基础观测下 $(\vect{q}_{\text{true}}, \vect{b})$ 不可辨识（\cref{prop:non_identifiable}），引入独立外部位置观测后近似可辨识（\cref{prop:identifiable}）。\cref{subsec:identifiability_vs_solvability} 进一步澄清"可辨识性 $\neq$ 可解性"——即便信息充分，最优策略仍必须以 $\vect{b}$ 为条件输出补偿动作，从而推出"随机偏差训练"的必要性。
+
+\textbf{贡献 2：分层模仿与强化学习的容错操作框架}（\cref{ch:task_policy}–\cref{ch:real_chapter}）。本文设计了 task $\oplus$ backup 双策略分层架构与 sim/real 二分的双端范式：(i)~\emph{共享方法层}（\cref{ch:task_policy}）含仿真 25 维与真机 14 维观测、随机偏差训练、DINOv3-S 共享网络架构、稀疏奖励;(ii)~\emph{仿真侧 HIL-SERL 训练任务策略}验证可观测性命题（H1–H3 实验闭环，\cref{ch:sim_chapter}）;(iii)~\emph{真机侧 BC 加 HG-DAgger 部署任务策略}——避开了 SAC 在小数据真机的 actor 漂移问题（\cref{ch:real_chapter}）;(iv)~\emph{备份策略采用纯仿真 SAC 加 DR 训练}，运行时由 Hierarchical Supervisor 三态 FSM 与任务策略硬切换。这一框架在范式选择层面是本文的方法论级贡献——\textbf{同一系统对不同子任务、不同部署阶段选用不同的 sim2real 路径}（任务策略 sim 验证加 real 模仿;备份策略纯 sim 加 DR），由观测模态、数据规模、安全约束三者共同决定。
+
+\textbf{贡献 3：真机三任务在编码器偏差注入下的端到端验证}（\cref{sec:real_experiments}）。本文实现了 B$+$D 双注入点编码器偏差注入（\cref{subsec:bd_injection}），并在 \texttt{pickup}、\texttt{wipe}、\texttt{pickandplace} 三个真机任务上完成 $4$ 列联合成功率矩阵评估（无 bias / 有 bias / $+$ backup 无 bias / $+$ backup 有 bias），是本论文的核心实证结果。同时给出 HIL-SERL 真机失败的方法论级 negative result（\cref{subsec:hilserl_failure}）—— SAC online 在 $50$ 条 demo 加稀疏奖励加 $10$\,Hz 真机吞吐条件下 actor 解冻后大幅漂移，这一负面结论支撑了真机改用 BC 加 HG-DAgger 的范式选择。
 
 \section{论文组织结构}\label{sec:organization}
 
-% 第 2 章：相关工作（FDI/FTC、POMDP、IL/RL 家族、安全 RL + Reward hacking）
-% 第 3 章：编码器偏差建模与 POMDP 分析（理论核心）
-% 第 4 章：任务策略——方法设计与共享网络架构
-% 第 5 章：仿真——策略训练与可观测性验证（HIL-SERL + Backup SAC+DR + 实验）
-% 第 6 章：真机——模仿部署与端到端验证（BC+HG-DAgger + WiLoR 备份 + 4 列矩阵）
-% 第 7 章：（已合并到第 6 章；plan B 重组将原"真机部署与验证"吸入第 6 章）
-% 第 8 章：总结与展望（含 future work 两步消融）
+本文由 7 章构成（原计划 8 章中"真机部署与验证"独立章节内容已合并到\cref{ch:real_chapter} 真机章）：\cref{ch:related_work}（相关工作）综述 FDI/FTC、POMDP 求解、模仿学习与人在回路、安全 RL 等领域文献并定位本文选择;\cref{ch:problem_formulation}（编码器偏差建模与 POMDP 分析）给出理论核心——一源三效应的因果链、POMDP 形式化与可观测性命题;\cref{ch:task_policy}（任务策略：方法设计与共享网络架构）给出 sim/real 共享的方法层;\cref{ch:sim_chapter}（仿真：策略训练与可观测性验证）给出仿真侧两条主线（HIL-SERL 任务策略加 SAC$+$DR 备份策略）与 H1–H3 实验闭环;\cref{ch:real_chapter}（真机：模仿部署与端到端验证）给出真机部署完整栈与三任务联合成功率矩阵;\cref{ch:conclusion}（总结与展望）汇总贡献并给出 future work（包含真机偏差鲁棒性两步消融）。
