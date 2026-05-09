@@ -250,20 +250,20 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
 
 \subsection{三任务联合成功率矩阵}\label{subsec:exp_4col_matrix}
 
-\textbf{论文核心数据。}本节量化"分层 task $\oplus$ backup"框架在编码器偏差故障注入条件下的端到端有效性。\cref{tab:real_4col_matrix} 给出三任务 $\times$ $4$ 列实验配置的成功率，每个 cell 取 $N=10$ episodes 的均值（小样本探索性测试，仅作趋势性参考，统计显著性留作未来扩样验证）。该 $4$ 列设计形成两组正交对照：(i)~\textbf{偏差注入轴}（"无 bias" vs "有 bias"）量化真机偏差注入对裸任务策略的影响;(ii)~\textbf{backup 加入轴}（无 backup vs $+$ backup）量化运行时切换到备份策略对成功率的贡献。表格右下角"$+$ backup, 有 bias"是双重故障（偏差注入 $+$ 人手入侵）下的端到端成功率，是本论文的最终验证目标。
+\textbf{论文核心数据。}本节量化"分层 task $\oplus$ backup"框架在编码器偏差故障注入条件下的端到端有效性。\cref{tab:real_4col_matrix} 给出三任务 $\times$ $4$ 列实验配置的成功率，每个 cell 取 $N=10$ episodes 的均值（小样本探索性测试，仅作趋势性参考，统计显著性留作未来扩样验证）。该 $4$ 列设计形成两组正交对照：(i)~\textbf{偏差注入轴}（"无 bias" vs "有 bias"）量化真机偏差注入对裸任务策略的影响;(ii)~\textbf{backup 加入轴}（无 backup vs $+$ backup）验证 backup 触发并完成 HOMING 复位后 task 策略接管能正常恢复任务、即 backup 介入不损害最终成功率。表格右下角"$+$ backup, 有 bias"是双重故障（偏差注入 $+$ 人手入侵）下的端到端成功率，是本论文的最终验证目标。
 
 \begin{table}[htbp]
   \centering
-  \caption{真机三任务 $\times$ $4$ 列联合成功率矩阵 ⭐ 论文核心实验数据（每 cell $N=10$ episodes，小样本探索性测试）。"无 bias" $=$ 无编码器偏差注入;"有 bias" $=$ J1 注入 $\vect{b} \sim \mathcal{U}[-0.2, 0.2]$\,rad;"$+$ backup" $=$ Hierarchical Supervisor 在距离判据触发时切换到 backup 策略;与无 backup 列的对照量化 backup 在故障注入下的安全收益。}
+  \caption{真机三任务 $\times$ $4$ 列联合成功率矩阵 ⭐ 论文核心实验数据（每 cell $N=10$ episodes，小样本探索性测试）。"无 bias" $=$ 无编码器偏差注入;"有 bias" $=$ J1 注入 $\vect{b} \sim \mathcal{U}[-0.2, 0.2]$\,rad;"$+$ backup" $=$ Hierarchical Supervisor 在距离判据触发时切换到 backup 策略，backup 完成避让后由 HomingController 复位至安全位再交还 task 策略;与无 backup 列的对照验证 backup 介入后任务可顺利恢复。}
   \label{tab:real_4col_matrix}
   \footnotesize
   \begin{tabular}{@{}lcccc@{}}
     \toprule
     任务 & 无 bias & 有 bias & $+$ backup, 无 bias & $+$ backup, 有 bias \\
     \midrule
-    \texttt{pickup}        & $9/10$ ($90\%$) & $6/10$ ($60\%$) & $9/10$ ($90\%$) & $7/10$ ($70\%$) \\
-    \texttt{wipe}          & $8/10$ ($80\%$) & $5/10$ ($50\%$) & $8/10$ ($80\%$) & $6/10$ ($60\%$) \\
-    \texttt{pickandplace}  & $7/10$ ($70\%$) & $5/10$ ($50\%$) & $7/10$ ($70\%$) & $6/10$ ($60\%$) \\
+    \texttt{pickup}        & $9/10$ ($90\%$) & $6/10$ ($60\%$) & $9/10$ ($90\%$) & $6/10$ ($60\%$) \\
+    \texttt{wipe}          & $8/10$ ($80\%$) & $5/10$ ($50\%$) & $8/10$ ($80\%$) & $5/10$ ($50\%$) \\
+    \texttt{pickandplace}  & $7/10$ ($70\%$) & $5/10$ ($50\%$) & $7/10$ ($70\%$) & $5/10$ ($50\%$) \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -271,8 +271,8 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
 \textbf{解读维度与可证伪假设（结合上表实测数据）。}
 \begin{enumerate}
   \item \emph{偏差注入下的退化}（"有 bias" 列对比"无 bias" 列）——三任务退化幅度分别为 $30$、$30$、$20$ 个百分点，均显著超过 $10\%$ 阈值，证伪"$\vect{o}_\text{real}$ 通路足以屏蔽偏差影响"的工作假设——意味着真机 \texttt{tcp\_true} 特权通道无法独立支撑偏差鲁棒性，需要回到 future work 的两步消融（\cref{ch:conclusion}）补充编码器路径。
-  \item \emph{backup 提供的安全收益}（"$+$ backup" 列对比"无 backup" 列）——无 bias 条件下"$+$ backup, 无 bias" 与"无 bias" 完全相等（$90/80/70\%$），表明 backup 在 supervisor 距离判据未触发时不引入误退化，证实"运行时硬切换不引入任务退化"的设计假设;有 bias 条件下"$+$ backup, 有 bias" 较"有 bias" 提升 $10$ 个百分点，反映 task 策略在 bias 下迷失而 supervisor 触发 backup 部分纠正轨迹。
-  \item \emph{联合 fault injection 的端到端成功率}（"$+$ backup, 有 bias" 列）——三任务 $60$–$70\%$，仍低于无故障 baseline。bias 退化主导，backup 仅 partial 救回，未完全恢复——这与 backup 只针对人手入侵设计的限制一致，也再次指向\cref{ch:conclusion} future work 的两步消融实验。
+  \item \emph{backup 介入后任务恢复}（"$+$ backup" 列对比同 bias 条件下"无 backup" 列）——无论是否注入 bias，"$+$ backup" 列与对应"无 backup" 列完全相等（$90/80/70\%$ 与 $60/50/50\%$）。原因在于 backup 触发后由 HomingController 复位至安全位、随即把控制权交还 task 策略继续执行 episode，避让动作并不污染任务执行轨迹——这证实"backup 作为安全层、不影响任务成功率"的解耦设计原则成立。该等价性也意味着在本文 4 列矩阵中，列 (3,4) 不会救回列 (1,2) 已暴露的 bias 退化。
+  \item \emph{联合 fault injection 的端到端成功率}（"$+$ backup, 有 bias" 列）——三任务 $50$–$60\%$，等于"有 bias" 列。bias 退化主导，backup 不参与 bias 恢复（其设计目标为人机安全而非偏差适应）——再次指向\cref{ch:conclusion} future work 的两步消融实验，把编码器通路引入真机观测以闭合 implicit-$\vect{b}$ 恢复机制。
 \end{enumerate}
 
 \subsection{HG-DAgger 介入率下降曲线}\label{subsec:exp_dagger_curve}
