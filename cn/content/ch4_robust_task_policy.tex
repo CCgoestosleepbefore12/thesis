@@ -10,7 +10,11 @@
 
 \paragraph{设计选择二：随机偏差训练} \cref{subsec:identifiability_vs_solvability} 进一步指出，即便信息充分，最优策略仍然是\emph{以偏差为条件}的函数：对不同的 $\vect{b}$，$\pi^\star$ 必须输出不同的补偿动作（见\cref{eq:conditional_policy}）。若训练过程仅暴露单一固定 $\vect{b}$，策略只能在该点附近学到"单点条件化"——在偏差分布的其他位置（尤其是 $\vect{b}=\vect{0}$）会产生过补偿现象。因此本文第二个设计选择是\textbf{按 episode 从偏差分布 $P(\vect{b})$ 中随机采样进行训练}，让策略暴露于整个偏差分布。这一思路与 Tobin 等人在视觉 sim-to-real 中采用的域随机化~\cite{tobin2017domain} 在原则上同源——两者都是"训练时让策略见过未来部署环境的分布"。\cref{sec:random_bias} 将具体描述随机偏差训练，\cref{sec:exp_h2} 的固定偏差基线实验将给出单点条件化过补偿的直接实证。
 
-\paragraph{设计选择三：仿真验证与真机部署的双端范式} 前两个选择回答了"观测什么"和"训练什么分布"，但仍留下"在哪里训练、用什么算法"的执行层问题。本文采取\textbf{仿真验证理论与真机模仿部署}的双端范式，由\emph{观测模态、数据规模、安全约束}三者共同决定。\emph{仿真侧}采用 Luo 等人的 HIL-SERL 框架~\cite{luo2025hilserl}（基于 Ball 等人 RLPD~\cite{ball2023rlpd} 加人在回路干预），用于验证可观测性命题与随机偏差鲁棒训练（H1–H3 实验），具体训练协议见\cref{sec:sim_task_train}。\emph{真机侧}因 sparse reward 与 $50$–$200$ demo 量级的小数据条件下 SAC online 阶段 actor 解冻会大幅漂移（论文级 negative result，详见\cref{subsec:hilserl_failure}），改用 Kelly 等人 HG-DAgger~\cite{kelly2019hgdagger}（人类介入式模仿学习的思路源自 Ross 等人 DAgger~\cite{ross2011dagger} 的 query-by-policy 范式；HIL-SERL 与 HG-DAgger 均属 human-initiated 变种）——基于 BC pretrain 的初始策略加操作员介入式纠错，具体训练协议见\cref{sec:real_task_deploy}。两端在共享方法层面（25 维观测 + 共享网络架构 + 稀疏奖励）一致，仅训练算法与具体协议不同。
+\paragraph{设计选择三：仿真验证与真机部署的双端范式} 前两个选择回答了"观测什么"和"训练什么分布"，但仍留下"在哪里训练、用什么算法"的执行层问题。本文采取\textbf{仿真验证理论与真机模仿部署}的双端范式，由\emph{观测模态、数据规模、安全约束}三者共同决定。
+
+\emph{仿真侧}采用 Luo 等人的 HIL-SERL 框架~\cite{luo2025hilserl}（基于 Ball 等人 RLPD~\cite{ball2023rlpd} 加人在回路干预），用于验证可观测性命题与随机偏差鲁棒训练（H1–H3 实验），具体训练协议见\cref{sec:sim_task_train}。
+
+\emph{真机侧}因 sparse reward 与 $50$–$200$ demo 量级的小数据条件下 SAC online 阶段 actor 解冻会大幅漂移（论文级 negative result，详见\cref{subsec:hilserl_failure}），改用 Kelly 等人 HG-DAgger~\cite{kelly2019hgdagger}（人类介入式模仿学习的思路源自 Ross 等人 DAgger~\cite{ross2011dagger} 的 query-by-policy 范式；HIL-SERL 与 HG-DAgger 均属 human-initiated 变种）——基于 BC pretrain 的初始策略加操作员介入式纠错，具体训练协议见\cref{sec:real_task_deploy}。两端在共享方法层面（25 维观测 + 共享网络架构 + 稀疏奖励）一致，仅训练算法与具体协议不同。
 
 \textbf{真机观测的简化与 future work。}真机部署观测进一步简化为 $14$ 维（详见\cref{subsec:real_obs}），其中编码器偏差路径暂未进入观测通道，TCP 信号统一来自外部独立通道——对应\cref{prop:identifiable} 中已被仿真验证的"成功信号路径"。这一简化使真机首跑专注于 sim-to-real 部署 pipeline 与故障注入下的端到端成功率验证（\cref{sec:real_experiments} 中三任务联合 backup 的 $4$ 列成功率矩阵）；真机层的偏差鲁棒性闭环——把"被污染编码器信号"与"外部位置信号"两路同时投入真机训练——留作\cref{ch:conclusion} 的两步 future work 消融。
 

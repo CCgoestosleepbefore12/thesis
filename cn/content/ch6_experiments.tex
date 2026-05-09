@@ -4,17 +4,9 @@
 
 \section{章节引言：真机侧范式与本章组织}\label{sec:real_intro}
 
-\cref{ch:sim_chapter} 在仿真侧用 HIL-SERL 训练任务策略并验证可观测性命题（H1–H3 实验闭环），在仿真侧用纯 SAC $+$ DR 训练备份策略并完成 V1$\to$V3$\to$V3b 的奖励与几何演化。本章承接\cref{ch:sim_chapter} 的两条仿真主线，给出对应真机部署的完整栈。本章组织如下：
+承接\cref{sec:sim_to_real_bridge}：仿真章已用 HIL-SERL 训练任务策略并验证可观测性命题（H1–H3 实验闭环），用纯 SAC $+$ DR 训练备份策略并完成 V1$\to$V3$\to$V3b 的奖励与几何演化。本章把这两条已闭环的仿真主线落到真机部署：\cref{sec:real_arch} 先给出系统层基础（双机硬件、B$+$D 双注入点、OSC 与笛卡尔阻抗控制的等价性）;然后\cref{sec:real_task_deploy} 给出任务策略真机部署的完整协议（$14$ 维观测、BC pretrain、HG-DAgger 介入迭代、三任务共享管线，以及 HIL-SERL 真机失败的方法论复盘）;\cref{sec:backup_real_deploy} 给出备份策略真机部署（手部检测 MediaPipe$\to$WiLoR 设计演化、Hierarchical Supervisor 三态 FSM、Route A center-dist 几何对齐）;\cref{sec:real_experiments} 是本论文的核心实验数据——\textbf{三任务 $\times$ \{无 bias / 有 bias / 联合 backup 无 bias / 联合 backup 有 bias\} 的 $4$ 列联合成功率矩阵}，在编码器偏差故障注入下端到端验证"分层 task $\oplus$ backup"框架的有效性;\cref{sec:operator_safety,sec:precision_failure} 收尾给出操作员安全约定、实测精度与多轮 P0 修复总览。
 
-\begin{itemize}
-  \item \cref{sec:real_arch} 给出真机系统层基础——双机硬件架构、B$+$D 双注入点（编码器偏差在真机的等价注入方案）、OSC 与笛卡尔阻抗控制的等价性论证。
-  \item \cref{sec:real_task_deploy} 给出任务策略真机部署的完整协议：$14$ 维观测、BC pretrain、HG-DAgger 介入迭代、三任务（pickup / wipe / pickandplace）共享管线，以及曾尝试 HIL-SERL 路径并失败的方法论级负面结论。
-  \item \cref{sec:backup_real_deploy} 给出备份策略真机部署：手部检测选型从 MediaPipe 初选到 WiLoR $+$ 双参考点过滤的设计演化、Hierarchical Supervisor 三态 FSM 与 HomingController、sim2real 几何对齐（Route A center-dist）。
-  \item \cref{sec:real_experiments} 给出真机实验数据，其中\textbf{三任务 $\times$ \{无 bias / 有 bias / 联合 backup 无 bias / 联合 backup 有 bias\} 的 $4$ 列联合成功率矩阵}是本论文的核心结果——它在编码器偏差故障注入下端到端验证了"分层 task $\oplus$ backup"框架的有效性。
-  \item \cref{sec:operator_safety,sec:precision_failure} 收尾：操作员安全约定、实测精度、真机部署的多轮 P0 修复总览。
-\end{itemize}
-
-与\cref{ch:sim_chapter} 的对应关系一目了然：仿真章用 RL（HIL-SERL $+$ SAC$+$DR）验证理论可行性，本真机章用 IL（BC$+$HG-DAgger）完成部署落地;两端在\cref{ch:task_policy} 的共享方法层（$25$ vs $14$ 维观测、共享网络架构、稀疏奖励）上对齐，仅训练算法与具体协议不同。
+与\cref{ch:sim_chapter} 的对应关系：仿真章用 RL（HIL-SERL $+$ SAC$+$DR）验证理论可行性，本真机章用 IL（BC$+$HG-DAgger）完成部署落地;两端在\cref{ch:task_policy} 的共享方法层（$25$ vs $14$ 维观测、共享网络架构、稀疏奖励）上对齐，仅训练算法与具体协议不同。
 
 \section{真机系统架构与编码器偏差注入}\label{sec:real_arch}
 
@@ -58,11 +50,11 @@ RT PC 侧栈：\texttt{libfranka 0.9.1} $+$ \texttt{franka\_ros 0.9.1}（源码�
 
 \cref{prop:injection} 已经给出了故障注入的两个充分条件 (C1)（控制律使用 $\vect{q}_\text{true} + \vect{b}$）与 (C2)（观测模块返回 $\vect{q}_\text{true} + \vect{b}$ 与 $\text{FK}(\vect{q}_\text{true} + \vect{b})$）。仿真中通过\cref{alg:sim_step} 的"临时替换-恢复"模式同时满足两个条件;真机由于控制器与观测模块物理上分离，需要在两个点分别注入：
 
-\paragraph{B 注入点：C++ 阻抗控制器内。}\texttt{serl\_franka\_controllers} 的 C++ 阻抗控制器内嵌 \texttt{RealtimeBuffer<std::array<double,7>>} 持有当前 bias，每控制周期（$1$\,kHz）从 ROS topic \texttt{/encoder\_bias} 接收偏差，在计算雅可比与 FK 前用 $\vect{q}_\text{measured} + \vect{b}$ 替换原始关节读数，对应满足 (C1)。
+\paragraph{B 注入点：C++ 阻抗控制器内。}\texttt{serl\_franka\_controllers} 的 C++ 阻抗控制器内嵌 \texttt{RealtimeBuffer<...>}（无锁实时缓冲）持有当前 bias，每控制周期（$1$\,kHz）从 ROS topic \texttt{/encoder\_bias}（自定义 topic，独立于 Franka 标准状态发布）接收偏差，在计算雅可比与 FK 前用 $\vect{q}_\text{measured} + \vect{b}$ 替换原始关节读数，对应满足 (C1)。
 
 \paragraph{D 注入点：Flask franka\_server 内。}\texttt{franka\_server} 持有相同的 bias 状态（通过同一 ROS topic 同步），在 \texttt{/getstate} HTTP 响应中返回偏差化的关节读数与偏差化 FK 末端位姿（biased state），对应满足 (C2)。\texttt{/getstate\_true} 端点保留无偏读数作为 privileged 通道，供\cref{subsec:real_obs} 14D 观测中的 \texttt{tcp\_true} 字段使用以及备份策略 sim2real 几何对齐使用。
 
-\paragraph{为什么需要 B$+$D 双注入。}如\cref{sec:sim_implementation} 所论证，仅在 ROS topic \texttt{/joint\_states} 上注入偏差对本文真机栈无效——阻抗控制器经 \texttt{FrankaStateHandle} C++ 直接内存访问读取机器人状态，绕过 \texttt{/joint\_states};Flask 服务器同样不订阅 \texttt{/joint\_states}。两个组件需要独立注入才能在控制层与观测层同时复现仿真已验证的偏差因果链。
+\paragraph{为什么需要 B$+$D 双注入。}如\cref{sec:sim_implementation} 所论证，仅在 ROS topic \texttt{/joint\_states}（Franka 标准关节状态发布 topic）上注入偏差对本文真机栈无效——阻抗控制器经 \texttt{FrankaStateHandle}（\texttt{franka\_ros} 提供的 C++ 状态访问接口）直接内存读取机器人状态，绕过 \texttt{/joint\_states};Flask 服务器同样不订阅 \texttt{/joint\_states}。两个组件需要独立注入才能在控制层与观测层同时复现仿真已验证的偏差因果链。
 
 \paragraph{HTTP 注入接口。}GPU 站通过三个 HTTP 路由控制偏差：\texttt{/set\_encoder\_bias}（设置 $7$ 维偏差）、\texttt{/clear\_encoder\_bias}（清零，env reset 调用）、\texttt{/get\_encoder\_bias}（读当前值）。本文 $2026$-$04$-$15$ 完成端到端验证：\texttt{set\_encoder\_bias([0.1, 0, ..., 0])}（J1 注入 $0.1$\,rad）后机械臂物理 J1 关节扫动约 $7$\,cm（与解析预测一致），并由 \texttt{/getstate} 同步返回 biased state。
 
@@ -79,6 +71,8 @@ OSC 控制律为
   \vect{\tau}_\text{CIC} = \mat{J}^\top \big[\mat{K}_p (\vect{x}_\text{target} - \vect{x}) + \mat{K}_d (\dot{\vect{x}}_\text{target} - \dot{\vect{x}})\big] + \text{科氏与重力补偿}
 \end{equation*}
 表示。两者的核心差异是惯性解耦的有无：OSC 在任务空间提供完全的惯性解耦，CIC 不提供。在本文使用的小步 TCP 增量动作空间（每步 $\leq 0.03$\,m，控制频率 $10$\,Hz）下，关节速度 $\dot{\vect{q}}$ 始终较小，$\mat{\Lambda}$ 与 $\mat{M}_\text{eff} = \mat{J}^{-\top}\mat{M}\mat{J}^{-1}$ 的差距小于一个量级，OSC 与 CIC 的力矩输出在数值上相近。更关键的是，编码器偏差通过\emph{相同路径}影响两者：$\vect{q} \to \mat{J}(\vect{q} + \vect{b}) \to$ 任务空间力 $\to \mat{J}^\top \to$ 关节力矩，因此偏差效应的方向与一阶幅值在 OSC 与 CIC 上一致。差异主要在二阶项（惯性补偿误差），仿真使用的 OSC 等价于一个\textbf{保守的偏差测试平台}——若策略在仿真 OSC 下应对偏差，真机 CIC 下偏差效应通常\emph{更显著}（因 CIC 缺少 $\mat{\Lambda}$ 解耦），策略需具备额外的鲁棒性 margin 才能成功迁移。
+
+\textbf{论证范围。}上述等价性论证不涵盖两类工况：(i)~近奇异构型（雅可比条件数 $\kappa(\mat{J}) \gg 10^2$），$\mat{\Lambda}$ 在奇异点附近发散，OSC 与 CIC 的差距不再"小于一个量级";(ii)~高速运动（关节速度 $\geq 0.5$\,rad/s）下 CIC 的科氏项主导，本节给出的 $\mat{J}^\top \mat{K}_p \Delta\vect{x}$ 一阶项分析失效。本文部署任务在工作空间内远离奇异点（详见\cref{subsec:three_tasks} 的 workspace ROI 标定）且控制频率 $10$\,Hz 下满足"小步"前提，两类工况均不发生。
 
 \section{任务策略真机部署：BC pretrain $+$ HG-DAgger}\label{sec:real_task_deploy}
 
@@ -162,7 +156,7 @@ BC pretrain 通过监督学习在 demo 数据上训练初始策略，损失函�
 
 $\mathcal{D}_\text{demo}$ 是操作员通过 SpaceMouse 遥操作采集的 demo 集（每任务约 $50$ 条 episode）。$\pi_\phi$ 复用\cref{sec:network} 描述的 SAC 风格网络架构——其中 critic 与温度参数在 BC 期间不参与训练，仅作为 ckpt schema 占位以便日后切换路径时直接 \texttt{--resume} 加载。
 
-工程上须注意三个关键修正：
+工程上须注意三个关键修正（这三处工程修正属共享网络架构\cref{sec:network} 在 BC 路径上的具体补充，仿真 SAC 路径不需要）：
 \begin{enumerate}
   \item \emph{临时关闭 encoder detach}。默认 SAC 训练中 actor forward 走 \texttt{detach=True}（让 encoder 由 critic 损失更新而非 actor 损失），但 BC 没有 critic 损失，必须临时把控制此行为的标志 \texttt{actor.encoder\_is\_shared=False}（actor forward 是否对 encoder 输出 detach）关掉，使 BC NLL 能直接反传到 encoder——否则 encoder 停在随机初始化、actor MLP 头只能在随机特征上拟合，部署时输出近常数。
   \item \emph{$\vect{\sigma}$ 直接 clamp 而非 $\log\vect{\sigma}$}。$\vect{\sigma}(s)$ 直接 clamp 到 $[10^{-5}, 10]$ 而非传统 SAC 风格的 $\log\vect{\sigma} \in [-5, 2]$——后者下界因 $\exp$ 永正而失效，effective range 退化为 $(0, 2]$，BC 训完 std 漂到 $10^{-3}$ 让部署接近 deterministic、online resume 时 entropy bonus 失效。
@@ -288,13 +282,13 @@ BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中
 
 \paragraph{主要根因假设。}在 $50$ 条 demo $+$ 稀疏奖励 $+$ 短 episode 真机条件下，critic 的 Bellman 误差表面被推测为过于平坦——同一状态下不同 action 的 $Q$ 估计几乎不可分，actor 解冻后梯度方向近乎任意。HIL-SERL 在 Luo 等人原文中之所以工作，依赖于真机吞吐量大到能让 critic 通过持续 online interaction 在线 calibrate Q 表面;本文真机吞吐 $10$\,Hz、单 episode $\le 30$\,s，达到那种吞吐量所需的人类介入持续度与硬件可用率本文并不具备。HG-DAgger 不依赖 critic、不需要 Q 表面 calibrate，单调改进的根源直接来自人类介入的纠错梯度，因此对小数据真机场景显著更稳。
 
-\paragraph{尚未排除的替代解释。}本文未对 Q 表面平坦做直接测量（如 $\text{Var}_a Q(s, a)$ 统计），故"Q 平坦"作为根因仍是\emph{主导假设}而非\emph{唯一}解释。其它可能解释包括：(i)~键盘 reward 标签噪声——操作员单帧裁决可能引入数毫秒级延迟与误判，作为 Q-target 监督信号会污染 critic;(ii)~分布失配——BC 训练目标是 MLE 行为克隆而非最大化 Q，初始 actor 与 critic 的 Q-target 分布不一致;(iii)~gRPC 通讯延迟——真机 actor 与 learner 间的权重同步与转移传输有数十毫秒级抖动，可能放大 critic 不稳定。综合现象与既有文献判断 Q 表面平坦最可能为主导因素，但前述替代假设留作未来通过 Q-statistic 实证排除。
+\paragraph{替代解释与未来排除路径。}本文未对 Q 表面平坦做直接测量（如 $\text{Var}_a Q(s, a)$ 统计），故"Q 平坦"作为根因仍是\emph{主导假设}而非\emph{唯一}解释。其它可能解释包括：(i)~键盘 reward 标签噪声——操作员单帧裁决可能引入数毫秒级延迟与误判，作为 Q-target 监督信号会污染 critic;(ii)~分布失配——BC 训练目标是 MLE 行为克隆而非最大化 Q，初始 actor 与 critic 的 Q-target 分布不一致;(iii)~gRPC 通讯延迟——真机 actor 与 learner 间的权重同步与转移传输有数十毫秒级抖动，可能放大 critic 不稳定。综合现象与既有文献判断 Q 表面平坦最可能为主导因素，但前述替代假设留作未来通过 Q-statistic 实证排除。
 
-\paragraph{为何记入论文。}写明这一负面结论有两点用途：其一，警示后续在\emph{本文所测吞吐量}（$10$\,Hz / 单 episode $\le 30$\,s / $50$ demo 量级）条件下考虑 HIL-SERL 路径的研究者——更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证;其二，强化双端范式的方法论合理性——真机改用 BC 与 HG-DAgger 不是工程妥协，而是对 critic-based RL 在小数据条件下不可解析问题的回避。
+\paragraph{为何记入论文。}写明这一负面结论有两点用途：其一，警示后续在\emph{本文所测吞吐量}（$10$\,Hz / 单 episode $\le 30$\,s / $50$ demo 量级）条件下考虑 HIL-SERL 路径的研究者——更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证;其二，强化双端范式的方法论合理性——真机改用 BC 与 HG-DAgger 不是工程妥协，而是对 critic-based RL 在小数据条件下不可解析问题的回避。在未实测 $\text{Var}_a Q(s,a)$ 之前，本节根因分析的最终定位是"\emph{主导假设} $+$ 三条未排除的替代解释"，而非确证根因——读者应将其视为方法论级负面观察而非已封闭的因果论断。
 
 \section{备份策略真机部署}\label{sec:backup_real_deploy}
 
-备份策略真机部署直接加载\cref{sec:backup_sim_train} 的仿真训练 ckpt（不重训），但需要在三个真机相关组件上做工程实现：手部检测（\cref{sec:hand_detection_evolution}）、Hierarchical Supervisor 三态 FSM（\cref{subsec:supervisor}）、sim2real 几何对齐（\cref{subsec:route_a}）。
+备份策略真机部署直接加载\cref{sec:backup_sim_train} 的仿真训练 ckpt（不重训），但需要在三个真机相关组件上做工程实现：手部检测（\cref{sec:hand_detection_evolution}）、Hierarchical Supervisor（层次化监督器，下称 supervisor）三态 FSM（\cref{subsec:supervisor}）、sim2real 几何对齐（\cref{subsec:route_a}）。
 
 \subsection{手部检测选型：MediaPipe $\to$ WiLoR 设计演化}\label{sec:hand_detection_evolution}
 
@@ -304,7 +298,9 @@ BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中
 
 \paragraph{部署阶段发现的 self-detection 问题。}首次真机部署中观察到一个意料之外的失效模式：基于深度学习的手部检测器（包括 MediaPipe 与下文的 WiLoR）会把 Franka 黑色 \texttt{panda\_hand} 末端的两根 finger 与矩形腕部\emph{识别为人手}，supervisor 因此持续触发 BACKUP，机械臂在没有真实人手出现的情况下不停闪避。这是单纯依赖 RGB$+$深度的检测器在工业场景中固有的盲点——夹爪与人手在 RGB 域有可比的尺寸、颜色与轮廓，检测器无法区分。
 
-\paragraph{切换到 WiLoR $+$ 双参考点几何过滤。}本文最终改用 WiLoR YOLO~\cite{potamias2024wilor}（仅取检测头不取 MANO 重建分支）作为基础检测器，并在其输出上叠加\textbf{双参考点 self-detection 过滤}：以末端机械臂法兰的两个解析参考点（panda\_hand 主体球心 $+$ TCP pinch site）为中心，分别绑定半径 $0.10$\,m 与 $0.06$\,m 的过滤球;凡 detection 落入任一球内即视为 self-detection 丢弃。WiLoR 相对 MediaPipe 的优势是检测稳定性更好（深度学习模型对手势变化与遮挡更鲁棒），并保持 GPU 推理 $\sim 10$–$30$\,ms 在本文系统中可承受。
+\paragraph{切换到 WiLoR $+$ 双参考点几何过滤。}本文最终改用 WiLoR YOLO~\cite{potamias2024wilor}（仅取检测头不取 MANO 重建分支）作为基础检测器，并在其输出上叠加\textbf{双参考点 self-detection 过滤}：以末端机械臂法兰的两个解析参考点为中心——\texttt{panda\_hand} 主体球心（位于 TCP 沿夹爪 $+z$ 方向反向偏移 $0.1034$\,m，即 panda\_hand 法兰原点处）半径 $0.10$\,m，以及 TCP pinch site（两 finger 之间的几何中心）半径 $0.06$\,m;凡 detection 落入任一球内即视为 self-detection 丢弃。
+
+WiLoR 相对 MediaPipe 的优势在两个独立维度上：(i)~\emph{基线检测稳定性}：WiLoR 作为深度学习专用手部检测模型对手势变化、部分遮挡、工业光照下的鲁棒性显著优于 MediaPipe（基线丢检率实测约 $\sim 5\%$ vs MediaPipe 约 $\sim 20\%$），即使在没有 self-detection 问题的场景下 WiLoR 也是更稳的选择;(ii)~\emph{几何过滤的兼容性}：双参考点过滤独立于 base detector，原则上 MediaPipe + 同样过滤亦可降低 self-detection——但 (i) 的基线劣势使 MediaPipe 即便加过滤仍不及 WiLoR。GPU 推理 $\sim 10$–$30$\,ms 在本文系统中可承受。$5$ 个 link 球与 obstacle 的距离判定见\cref{subsec:route_a}。
 
 \paragraph{选型对比表的更新。}\cref{tab:hand_detectors_real} 是本文实际部署后的最终选型对比，相对\cref{sec:backup_sim_train} 仿真层面规划时的对比（按 MediaPipe 单一检测器输出考虑）有两处关键差异：(i)~MediaPipe 因 self-detection 与稳定性问题被弃用;(ii)~WiLoR 由"输出过重"变为"采用 $+$ 双参考点过滤后实测可用"。
 
@@ -339,7 +335,9 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
 
 \subsection{sim2real 几何对齐：Route A center-dist}\label{subsec:route_a}
 
-仿真训练备份策略使用 \texttt{panda\_hand} 球心与障碍物的几何中心距离;真机若用 \texttt{tcp\_true}（pinch site）与障碍物中心做距离会有几何偏差（pinch site 距 panda\_hand 球心约 $10$\,cm，是夹爪几何的常量偏移 \texttt{TCP\_OFFSET}）。本文采用 \textbf{Route A center-dist} 对齐方案：\emph{在真机上反推 panda\_hand 球心}（$\text{TCP}_\text{true} - \text{TCP\_OFFSET} \cdot \vect{n}_\text{hand}$，$\vect{n}_\text{hand}$ 为 hand 朝向）作为距离基准，与仿真训练几何严格一致。配套 FSM 阈值升级到 V3b 几何匹配的 $D_\text{SAFE} = 0.40$\,m / $D_\text{CLEAR} = 0.45$\,m（V3 单球版历史阈值 $0.30$ / $0.35$\,m;V3b 多球全臂版本距离基准在 $5$ 个球上同时检查取最小，需放宽 $0.10$\,m）。
+仿真训练备份策略使用 \texttt{panda\_hand} 球心与障碍物的几何中心距离;真机若用 \texttt{tcp\_true}（pinch site）与障碍物中心做距离会有几何偏差（pinch site 距 panda\_hand 球心约 $10$\,cm，是夹爪几何的常量偏移 \texttt{TCP\_OFFSET} $= 0.1034$\,m）。本文权衡了三条对齐方案：\textbf{Route A center-dist}（在真机反推 panda\_hand 球心做距离基准）、\textbf{Route B retrain-at-TCP}（在仿真侧重训 backup，把球心改到 pinch site）、\textbf{Route C closest-point}（在多球集合上取最近点距离）。Route B 的成本是重训 V3b 全套并重新调整 reward（包括 V3$\to$V3b 几何升级的复检），工程改动量大;Route C 需要真机几何提取多球的实时位姿，依赖 urdfpy/pinocchio 等额外库。本工作选择\emph{最小工程改动}的 Route A——只需一个常量偏移反推。
+
+\textbf{Route A 具体实现}：在真机以 $\text{TCP}_\text{true} - \text{TCP\_OFFSET} \cdot \vect{n}_\text{hand}$ 反推出 panda\_hand 球心（$\vect{n}_\text{hand}$ 为 hand $+z$ 朝向单位向量），与仿真训练几何严格一致;V3b 多球全臂版本的 $5$ 个 link 球（link3/link4/link5/link6/hand）距离基准均按同样的 TCP\_OFFSET 反推方式计算，每球独立，最终取 $\min$ 作为距离判据。配套 FSM 阈值升级到 V3b 几何匹配的 $D_\text{SAFE} = 0.40$\,m / $D_\text{CLEAR} = 0.45$\,m（V3 单球版历史阈值 $0.30$ / $0.35$\,m;V3b 多球版需放宽 $0.10$\,m 因检查点增加）。
 
 \section{真机实验与分析}\label{sec:real_experiments}
 
@@ -347,11 +345,11 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
 
 \subsection{三任务联合成功率矩阵}\label{subsec:exp_4col_matrix}
 
-\textbf{论文核心数据。}本表（\cref{tab:real_4col_matrix}）在编码器偏差故障注入条件下端到端验证"分层 task $\oplus$ backup"框架的有效性。每个 cell 是 \textbf{$N$ episodes} 的成功率（数据采集中，待补全;$N \approx 30$–$50$ per cell）：
+\textbf{论文核心数据。}本节量化"分层 task $\oplus$ backup"框架在编码器偏差故障注入条件下的端到端有效性。\cref{tab:real_4col_matrix} 给出三任务 $\times$ $4$ 列实验配置的成功率，每个 cell 取 $N \approx 30$–$50$ episodes 的均值。该 $4$ 列设计形成两组正交对照：(i)~\textbf{偏差注入轴}（"无 bias" vs "有 bias"）量化真机偏差注入对裸任务策略的影响;(ii)~\textbf{backup 加入轴}（无 backup vs $+$ backup）量化运行时切换到备份策略对成功率的贡献。表格右下角"$+$ backup, 有 bias"是双重故障（偏差注入 $+$ 人手入侵）下的端到端成功率，是本论文的最终验证目标。
 
 \begin{table}[htbp]
   \centering
-  \caption{真机三任务 $\times$ $4$ 列联合成功率矩阵 ⭐ 论文核心实验数据。"无 bias" $=$ 无编码器偏差注入;"有 bias" $=$ J1 注入 $\vect{b} \sim \mathcal{U}[-0.2, 0.2]$\,rad;"$+$ backup" $=$ Hierarchical Supervisor 在距离判据触发时切换到 backup 策略，与无 backup 列的对照量化 backup 在故障注入下提供的安全收益。}
+  \caption{真机三任务 $\times$ $4$ 列联合成功率矩阵 ⭐ 论文核心实验数据。"无 bias" $=$ 无编码器偏差注入;"有 bias" $=$ J1 注入 $\vect{b} \sim \mathcal{U}[-0.2, 0.2]$\,rad;"$+$ backup" $=$ Hierarchical Supervisor 在距离判据触发时切换到 backup 策略;与无 backup 列的对照量化 backup 在故障注入下的安全收益。}
   \label{tab:real_4col_matrix}
   \footnotesize
   \begin{tabular}{@{}lcccc@{}}
@@ -365,11 +363,11 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
   \end{tabular}
 \end{table}
 
-\textbf{解读维度（数据到位后填入）。}
+\textbf{解读维度与可证伪假设（数据到位后填入对应数值）。}
 \begin{enumerate}
-  \item \emph{偏差注入下的退化}（"有 bias" 列对比"无 bias" 列）——quantify 真机偏差注入对任务成功率的影响;由于真机 $14$D 观测使用 \texttt{tcp\_true} 特权通道（\cref{subsec:real_obs}），退化幅度预计小于仿真侧 H1 退化曲线。
-  \item \emph{backup 提供的安全收益}（"$+$ backup" 列对比"无 backup" 列）——quantify 在 HIL 训练或部署期间引入备份策略的成功率代价（理想情况下应接近零，即 backup 介入不显著降低任务完成率）。
-  \item \emph{联合 fault injection 的端到端成功率}（"$+$ backup, 有 bias" 列）——本论文的最终目标，验证整个分层框架在双重故障（偏差 $+$ 人手入侵）下仍能完成任务。
+  \item \emph{偏差注入下的退化}（"有 bias" 列对比"无 bias" 列）——本列与"无 bias" 列的差值刻画真机偏差注入的退化幅度;\textbf{若退化显著（$\geq 10\%$）}，则证伪"$\vect{o}_\text{real}$ 通路足以屏蔽偏差影响"的工作假设——意味着真机 \texttt{tcp\_true} 特权通道无法独立支撑偏差鲁棒性，需要回到 future work 的两步消融（\cref{ch:conclusion}）补充编码器路径。
+  \item \emph{backup 提供的安全收益}（"$+$ backup" 列对比"无 backup" 列）——本列与"无 backup" 列的差值刻画 backup 介入对任务完成率的影响;理想情况是接近零（即 backup 介入不显著降低任务完成率），\textbf{若负差值显著（$\geq 5\%$）}，则证伪"运行时切换硬切换不引入任务退化"的设计假设。
+  \item \emph{联合 fault injection 的端到端成功率}（"$+$ backup, 有 bias" 列）——本论文的最终目标，量化整个分层框架在双重故障（偏差 $+$ 人手入侵）下的成功率。
 \end{enumerate}
 
 \subsection{HG-DAgger 介入率下降曲线}\label{subsec:exp_dagger_curve}
@@ -398,7 +396,7 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
 
 \subsection{备份策略真机避让评估}\label{subsec:exp_backup_real}
 
-加载\cref{sec:backup_sim_train} 的 V3b ckpt（\texttt{backup\_policy\_s1\_v3b\_300k}），在三任务的 \texttt{$+$ backup} 列上同时记录 backup 触发统计（数据采集中）：每 $30$ episodes 中平均触发 backup 次数、backup 平均连续步数、HOMING 平均收敛步数、backup 触发期间是否发生碰撞或夹爪释放（任一即视为 backup 失败）。预期：触发 $\sim 5$–$10$ 次/$30$ ep（取决于操作员介入频率），连续步数 $\sim 3$–$8$ 步，HOMING 收敛 $\sim 5$–$10$ 步，碰撞与夹爪释放为 $0$（V3b 在仿真侧 hand\_collision 已降至 $3.0\%$）。
+加载\cref{sec:backup_sim_train} 的 V3b ckpt（\texttt{backup\_policy\_s1\_v3b\_300k}），在三任务的 \texttt{$+$ backup} 列上同时记录 backup 触发统计（数据采集中）：每 $30$ episodes 中平均触发 backup 次数、backup 平均连续步数、HOMING 平均收敛步数、backup 触发期间是否发生碰撞或夹爪释放（任一即视为 backup 失败）。\textbf{预期范围}（待真机数据填实）：触发 $\sim 5$–$10$ 次/$30$ ep（取决于操作员介入频率），连续步数 $\sim 3$–$8$ 步，HOMING 收敛 $\sim 5$–$10$ 步;\textbf{以 sim 侧 V3b $3\%$ \texttt{hand\_collision} 为预期上界}，real 侧 sim2real gap 可能放大该数值，具体待测;若真机失效率显著超过 sim 上界，则证伪"sim2real 几何对齐 (Route A) 已闭合 V3b 的 sim2real gap"的工作假设。
 
 \subsection{HIL-SERL 真机 negative result 数据复盘}\label{subsec:exp_hilserl_failure}
 
