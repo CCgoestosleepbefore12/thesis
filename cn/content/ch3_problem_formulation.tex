@@ -382,7 +382,7 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 
 前四节的分析均在抽象层面展开：\cref{sec:causal_chain} 给出偏差在控制与观测中传播的物理因果链，\cref{sec:pomdp} 将其形式化为 POMDP，\cref{sec:observability} 分析了信息结构上的可辨识性。本节的任务则是将这些抽象结论\emph{落地}——在基于 MuJoCo 的仿真环境中忠实地复现\cref{sec:causal_chain} 所描述的三个效应，并严格论证仿真实现与原物理机制在相关观测量上等价。
 
-\paragraph{为什么不能简单沿用 joint\_state 注入} 在 ROS 环境下，一种常见的故障注入做法是直接对 \texttt{/joint\_states} 话题上发布的关节角度加入偏差~\cite{ma2023case}。这在"控制器订阅 \texttt{/joint\_states} 做反馈"的标准 ROS 架构中是简洁有效的，因为偏差一经进入话题，自然地传播到所有下游读取方。然而本文的仿真和真机均\emph{不符合}这一前提：仿真中的 OSC 控制器直接从 MuJoCo 的 \texttt{data.qpos} 读取关节角度，根本没有 \texttt{/joint\_states} 话题作为中介；真机上 hil-serl 架构的阻抗控制器则通过 \texttt{FrankaStateHandle} 的 C++ 直接内存访问读取机器人状态，同样绕过了 ROS topic 通信（详见\cref{ch:real_robot}）。在这两种情形下，仅在 \texttt{/joint\_states} 上注入偏差都无法影响控制器或观测模块——需要设计一个与底层数据流耦合方式解耦的\emph{等价注入方案}。本节首先给出与具体实现无关的充分条件，再在此基础上描述 MuJoCo 下的具体实现。
+\paragraph{为什么不能简单沿用 joint\_state 注入} 在 ROS 环境下，一种常见的故障注入做法是直接对 \texttt{/joint\_states} 话题上发布的关节角度加入偏差~\cite{ma2023case}。这在"控制器订阅 \texttt{/joint\_states} 做反馈"的标准 ROS 架构中是简洁有效的，因为偏差一经进入话题，自然地传播到所有下游读取方。然而本文的仿真和真机均\emph{不符合}这一前提：仿真中的 OSC 控制器直接从 MuJoCo 的 \texttt{data.qpos} 读取关节角度，根本没有 \texttt{/joint\_states} 话题作为中介；真机上 hil-serl 架构的阻抗控制器则通过 \texttt{FrankaStateHandle} 的 C++ 直接内存访问读取机器人状态，同样绕过了 ROS topic 通信（详见\cref{ch:real_chapter}）。在这两种情形下，仅在 \texttt{/joint\_states} 上注入偏差都无法影响控制器或观测模块——需要设计一个与底层数据流耦合方式解耦的\emph{等价注入方案}。本节首先给出与具体实现无关的充分条件，再在此基础上描述 MuJoCo 下的具体实现。
 
 \subsection{故障注入的充分条件}\label{subsec:injection_sufficient}
 
@@ -402,7 +402,7 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 
 \emph{效应 1（初始位置偏移）}：\cref{subsec:effect1} 的稳态条件 $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ 是条件 (C1) 应用于底层 PD 控制器的直接推论——当 PD 控制器以 $\vect{q}_{\text{target}} = \vect{q}_{\text{home}}$ 跟踪目标、并以 $\vect{q}_{\text{true}} + \vect{b}$ 作为反馈时，稳态必然停在 $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ 处。在仿真中如果不显式运行底层 PD 控制器（见\cref{subsec:sim_effect1}），直接以 $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ 初始化关节位置即可达到相同的稳态效果。\end{proof}
 
-\cref{prop:injection} 将"故障注入是否忠实"这一问题抽象为两个\emph{与架构无关}的条件：不论下层实现是通过 ROS 话题、C++ 内存访问还是仿真的 data 结构，只要 (C1) 和 (C2) 成立，注入就等价。这为本节的仿真实现与\cref{ch:real_robot} 的真机 B+D 双注入方案提供了统一的正确性依据。
+\cref{prop:injection} 将"故障注入是否忠实"这一问题抽象为两个\emph{与架构无关}的条件：不论下层实现是通过 ROS 话题、C++ 内存访问还是仿真的 data 结构，只要 (C1) 和 (C2) 成立，注入就等价。这为本节的仿真实现与\cref{ch:real_chapter} 的真机 B+D 双注入方案提供了统一的正确性依据。
 
 \subsection{MuJoCo 中的具体实现}\label{subsec:sim_implementation}
 
@@ -465,4 +465,4 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 
 本节描述的 MuJoCo 仿真是对真实工业机器人系统的\emph{理想化近似}，主要差距包括：(i)~效应 1中跳过了底层 PD 控制器的瞬态，而真机上由 \texttt{libfranka} 驱动的 $1$\,kHz 伺服存在几十毫秒到数百毫秒的有限响应时间；(ii)~仿真使用 OSC 控制律，而真机 hil-serl 架构使用笛卡尔阻抗控制器，两者的等价性将在\cref{sec:control_equivalence} 严格分析；(iii)~MuJoCo 的刚体动力学不包含关节摩擦、电机延迟与线缆影响等真实效应；(iv)~本文只考虑固定与随机偏差，暂未建模温度漂移与电磁噪声等时变偏差类型。
 
-这些差距\emph{均朝向使偏差效应在仿真中变弱的方向}——摩擦与延迟在真机上会进一步恶化偏差对控制精度的影响，时变偏差在真机上会增加辨识难度。因此仿真可以被视为一个保守的测试平台：若某方法在仿真中能够应对偏差，那么它在真机上\emph{更必要}、且通常\emph{更显著}。完整的 8 项对比表与真机注入方案的具体实现将在\cref{ch:real_robot} 给出，此处不再展开。
+这些差距\emph{均朝向使偏差效应在仿真中变弱的方向}——摩擦与延迟在真机上会进一步恶化偏差对控制精度的影响，时变偏差在真机上会增加辨识难度。因此仿真可以被视为一个保守的测试平台：若某方法在仿真中能够应对偏差，那么它在真机上\emph{更必要}、且通常\emph{更显著}。完整的 8 项对比表与真机注入方案的具体实现将在\cref{ch:real_chapter} 给出，此处不再展开。

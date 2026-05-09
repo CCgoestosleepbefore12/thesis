@@ -1,6 +1,6 @@
-% 第4章 任务策略：仿真理论验证与真机模仿部署
+% 第4章 任务策略：方法设计与共享网络架构
 
-\chapter{任务策略：仿真理论验证与真机模仿部署}\label{ch:task_policy}
+\chapter{任务策略：方法设计与共享网络架构}\label{ch:task_policy}
 
 \section{方法设计动机}\label{sec:task_method_motivation}
 
@@ -10,20 +10,9 @@
 
 \paragraph{设计选择二：随机偏差训练} \cref{subsec:identifiability_vs_solvability} 进一步指出，即便信息充分，最优策略仍然是\emph{以偏差为条件}的函数：对不同的 $\vect{b}$，$\pi^\star$ 必须输出不同的补偿动作（见\cref{eq:conditional_policy}）。若训练过程仅暴露单一固定 $\vect{b}$，策略只能在该点附近学到"单点条件化"——在偏差分布的其他位置（尤其是 $\vect{b}=\vect{0}$）会产生过补偿现象。因此本文第二个设计选择是\textbf{按 episode 从偏差分布 $P(\vect{b})$ 中随机采样进行训练}，让策略暴露于整个偏差分布。这一思路与 Tobin 等人在视觉 sim-to-real 中采用的域随机化~\cite{tobin2017domain} 在原则上同源——两者都是"训练时让策略见过未来部署环境的分布"。\cref{sec:random_bias} 将具体描述随机偏差训练，\cref{sec:exp_h2} 的固定偏差基线实验将给出单点条件化过补偿的直接实证。
 
-\paragraph{设计选择三：仿真验证与真机部署的双端范式} 前两个选择回答了"观测什么"和"训练什么分布"，但仍留下"在哪里训练、用什么算法"的执行层问题。本文采取\textbf{仿真验证理论与真机模仿部署}的双端范式，由\emph{观测模态、数据规模、安全约束}三者共同决定。
+\paragraph{设计选择三：仿真验证与真机部署的双端范式} 前两个选择回答了"观测什么"和"训练什么分布"，但仍留下"在哪里训练、用什么算法"的执行层问题。本文采取\textbf{仿真验证理论与真机模仿部署}的双端范式，由\emph{观测模态、数据规模、安全约束}三者共同决定。\emph{仿真侧}采用 Luo 等人的 HIL-SERL 框架~\cite{luo2025hilserl}（基于 Ball 等人 RLPD~\cite{ball2023rlpd} 加人在回路干预），用于验证可观测性命题与随机偏差鲁棒训练（H1–H3 实验），具体训练协议见\cref{sec:sim_task_train}。\emph{真机侧}因 sparse reward 与 $50$–$200$ demo 量级的小数据条件下 SAC online 阶段 actor 解冻会大幅漂移（论文级 negative result，详见\cref{subsec:hilserl_failure}），改用 Kelly 等人 HG-DAgger~\cite{kelly2019hgdagger}（人类介入式模仿学习的思路源自 Ross 等人 DAgger~\cite{ross2011dagger} 的 query-by-policy 范式；HIL-SERL 与 HG-DAgger 均属 human-initiated 变种）——基于 BC pretrain 的初始策略加操作员介入式纠错，具体训练协议见\cref{sec:real_task_deploy}。两端在共享方法层面（25 维观测 + 共享网络架构 + 稀疏奖励）一致，仅训练算法与具体协议不同。
 
-\textbf{仿真侧——HIL-SERL 验证理论与方法可行性。}在仿真中编码器偏差注入是确定性可控的，足以支撑\cref{ch:experiments} 中的偏差退化基线（H1）、固定与随机偏差对照（H2/H3）以及观测维度消融实验。算法上采用 Luo 等人提出的 HIL-SERL 框架~\cite{luo2025hilserl}，其以 Ball 等人的 RLPD~\cite{ball2023rlpd} 为底层算法——将 50 条人类演示 episode 放入离线缓冲区、与在线采集的数据混合采样，在 SAC 基础上提供稠密的引导信号——并进一步把\emph{人在回路干预}作为持续的一等训练数据源（人类介入式模仿学习的思路源自 Ross 等人 DAgger~\cite{ross2011dagger} 的 query-by-policy 范式；HIL-SERL 与本文真机采用的 HG-DAgger~\cite{kelly2019hgdagger} 均属 human-initiated 变种）。HIL-SERL 在仿真中稳定收敛，配套的 H2–H3 实验充分验证"观测增强加随机偏差训练~$\to$~偏差鲁棒"这一理论路径（H1 由独立无偏差基线评估给出），框架细节见\cref{sec:hilserl}。
-
-\textbf{真机侧——BC pretrain 与 HG-DAgger 模仿部署。}真机部署阶段无法沿用 HIL-SERL，原因有三：
-\begin{itemize}
-  \item \textbf{视觉 sim-to-real gap}——任务策略观测含双目 RGB 图像，仿真渲染与真实相机在纹理、光照、噪声分布上的差距难以仅通过域随机化覆盖（这一观察与\cref{ch:backup_policy} 备份策略可纯仿真训练的情形形成对照，详见\cref{sec:backup_paradigm}），策略权重必须在真机上继续学习；
-  \item \textbf{真机数据稀缺}——人类遥操作 demo 采集成本高，可用量级 $50$–$200$ 条；
-  \item \textbf{小数据 sparse reward 下 SAC 不收敛}——本文多次实验观察到，从 BC pretrain ckpt 恢复后进入在线 SAC 阶段、\emph{actor 解冻 1–2 个 episode 内策略大幅漂移}的现象，机理与多种 alternative 假设的复盘见\cref{subsec:hilserl_failure}。这是论文方法论级的 negative result。
-\end{itemize}
-
-本文真机阶段改用 Kelly 等人提出的 HG-DAgger~\cite{kelly2019hgdagger}——先用 demo 行为克隆（BC pretrain）得到初始策略，再让操作员在策略部署过程中按需介入修正，介入帧合并入下一轮重训。与残差 RL~\cite{johannink2019residual} 和纯离线 RL（IQL/CQL）等替代路径相比，BC + HG-DAgger 不依赖 critic、调参面比 SAC 小一个量级，是本工作迭代收敛中实验有效的选项；与残差 RL 和纯离线 RL 在真机的系统对照留作未来工作。框架细节见\cref{sec:bc_dagger}。
-
-\textbf{真机观测的简化与 future work。}真机部署观测进一步简化为 $14$ 维（详见\cref{sec:bc_dagger}），其中编码器偏差路径暂未进入观测通道，TCP 信号统一来自外部独立通道——对应\cref{prop:identifiable} 中已被仿真验证的"成功信号路径"。这一简化使真机首跑专注于 sim-to-real 部署 pipeline 与故障注入下的端到端成功率验证（\cref{ch:experiments} 中三任务联合 backup 的 $4$ 列成功率矩阵）；真机层的偏差鲁棒性闭环——把"被污染编码器信号"与"外部位置信号"两路同时投入真机训练——留作\cref{ch:conclusion} 的两步 future work 消融。
+\textbf{真机观测的简化与 future work。}真机部署观测进一步简化为 $14$ 维（详见\cref{subsec:real_obs}），其中编码器偏差路径暂未进入观测通道，TCP 信号统一来自外部独立通道——对应\cref{prop:identifiable} 中已被仿真验证的"成功信号路径"。这一简化使真机首跑专注于 sim-to-real 部署 pipeline 与故障注入下的端到端成功率验证（\cref{sec:real_experiments} 中三任务联合 backup 的 $4$ 列成功率矩阵）；真机层的偏差鲁棒性闭环——把"被污染编码器信号"与"外部位置信号"两路同时投入真机训练——留作\cref{ch:conclusion} 的两步 future work 消融。
 
 \paragraph{小结} 上述三个设计选择可以简明地映射为\cref{tab:method_mapping} 所示的"理论-约束-方法"对应关系。后续各节将按此顺序展开具体实现。
 
@@ -38,9 +27,9 @@
     \midrule
     理论结论 & \cref{prop:identifiable}（可辨识性） & 观测空间增强（25D） & \cref{sec:obs_design} \\
     理论结论 & \cref{subsec:identifiability_vs_solvability}（条件补偿） & 随机偏差训练 & \cref{sec:random_bias} \\
-    现实约束 & 视觉 sim-to-real gap & 真机部署与 IL 路径 & \cref{sec:bc_dagger} \\
-    现实约束 & 稀疏奖励探索困难（仿真侧） & HIL-SERL（demo + HIL bootstrap） & \cref{sec:hilserl} \\
-    现实约束 & 真机 sparse + 小数据 SAC 漂移 & BC pretrain + HG-DAgger & \cref{sec:bc_dagger} \\
+    现实约束 & 视觉 sim-to-real gap & 真机部署与 IL 路径 & \cref{sec:real_task_deploy} \\
+    现实约束 & 稀疏奖励探索困难（仿真侧） & HIL-SERL（demo + HIL bootstrap） & \cref{sec:sim_task_train} \\
+    现实约束 & 真机 sparse + 小数据 SAC 漂移 & BC pretrain + HG-DAgger & \cref{sec:real_task_deploy} \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -49,9 +38,9 @@
 
 \subsection{观测向量构成}\label{subsec:obs_vector}
 
-任务策略的低维状态观测向量 $\vect{o}_t \in \mathbb{R}^{25}$ 由七组分量顺序拼接而成（\cref{tab:obs_25d}）：前 $18$ 维来自机器人本体感觉通路（编码器读数与控制指令），中间 $3$ 维为独立的外部 TCP 位置，末尾 $4$ 维为人手状态，用于运行时切换到\cref{ch:backup_policy} 的备份避让策略。$\vect{o}_\text{real}$ 的噪声建模与 TCP 定位方案的抽象化处理见\cref{subsec:obs_image_tcp}。\footnote{仿真实现层面环境接口为 $31$ 维默认实现，其中方块位置 $\vect{o}_\text{block}$ 与目标板位置 $\vect{o}_\text{plate}$ 在本章实验场景下按 episode reset 至确定性位置、对策略恒为常量信道。为避免读者误以为本方法依赖物体真值位置、并与真机简化观测对齐（详见\cref{sec:bc_dagger}），本文以剔除两路常量信道后的 $25$ 维形式描述观测空间——常量维度的梯度恒为零，定量结果与原 $31$ 维实现等价（前提是输入归一化对常量信道做特判：本工作通过 \texttt{compute\_dataset\_stats.py} 中的 const-channel 守卫保证 min-max 归一化在常量信道上不产生 NaN，详见\cref{subsec:three_tasks}）。}
+任务策略的低维状态观测向量 $\vect{o}_t \in \mathbb{R}^{25}$ 由七组分量顺序拼接而成（\cref{tab:obs_25d}）：前 $18$ 维来自机器人本体感觉通路（编码器读数与控制指令），中间 $3$ 维为独立的外部 TCP 位置，末尾 $4$ 维为人手状态，用于运行时切换到\cref{sec:backup_sim_train} 的备份避让策略。$\vect{o}_\text{real}$ 的噪声建模与 TCP 定位方案的抽象化处理见\cref{subsec:obs_image_tcp}。\footnote{仿真实现层面环境接口为 $31$ 维默认实现，其中方块位置 $\vect{o}_\text{block}$ 与目标板位置 $\vect{o}_\text{plate}$ 在本章实验场景下按 episode reset 至确定性位置、对策略恒为常量信道。为避免读者误以为本方法依赖物体真值位置、并与真机简化观测对齐（详见\cref{sec:real_task_deploy}），本文以剔除两路常量信道后的 $25$ 维形式描述观测空间——常量维度的梯度恒为零，定量结果与原 $31$ 维实现等价（前提是输入归一化对常量信道做特判：本工作通过 \texttt{compute\_dataset\_stats.py} 中的 const-channel 守卫保证 min-max 归一化在常量信道上不产生 NaN，详见\cref{subsec:three_tasks}）。}
 
-\cref{tab:obs_25d} 同时标注了各分量的两个正交性质——\emph{是否受偏差 $\vect{b}$ 污染}与\emph{对任务目标的相关性}。后者分为四类：\textbf{直接相关}（$\vect{o}_\text{real}$ 与 $\text{FK}(\vect{q}+\vect{b})$）直接参与位姿决策；\textbf{间接相关}的关节角 $\vect{q}+\vect{b}$ 仅在关节极限或几何约束触发时被利用；\textbf{结构性}的关节速度与夹爪开度主要服务于控制闭环的平滑与状态闭合；\textbf{运行时安全相关}的 $h_\text{active}$ 与 $\vect{p}_\text{hand}$ 不进入任务奖励梯度——它们的作用是让任务策略与\cref{ch:backup_policy} 的备份避让策略共享同一套感知管线，并在运行时被距离判据用作策略切换的依据（任务策略虽然能"看见"人手但不会因此学会避让，避让行为完全由备份策略在切换后承担）。这一分类揭示出本节的核心设计思路：两个直接任务相关的位置量中，$\text{FK}(\vect{q}+\vect{b})$ 受污染，$\vect{o}_\text{real}$ 未受污染——正是这组\emph{直接相关且彼此不一致}的位置信号为策略隐式辨识 $\vect{b}$ 提供了信息来源。
+\cref{tab:obs_25d} 同时标注了各分量的两个正交性质——\emph{是否受偏差 $\vect{b}$ 污染}与\emph{对任务目标的相关性}。后者分为四类：\textbf{直接相关}（$\vect{o}_\text{real}$ 与 $\text{FK}(\vect{q}+\vect{b})$）直接参与位姿决策；\textbf{间接相关}的关节角 $\vect{q}+\vect{b}$ 仅在关节极限或几何约束触发时被利用；\textbf{结构性}的关节速度与夹爪开度主要服务于控制闭环的平滑与状态闭合；\textbf{运行时安全相关}的 $h_\text{active}$ 与 $\vect{p}_\text{hand}$ 不进入任务奖励梯度——它们的作用是让任务策略与\cref{sec:backup_sim_train} 的备份避让策略共享同一套感知管线，并在运行时被距离判据用作策略切换的依据（任务策略虽然能"看见"人手但不会因此学会避让，避让行为完全由备份策略在切换后承担）。这一分类揭示出本节的核心设计思路：两个直接任务相关的位置量中，$\text{FK}(\vect{q}+\vect{b})$ 受污染，$\vect{o}_\text{real}$ 未受污染——正是这组\emph{直接相关且彼此不一致}的位置信号为策略隐式辨识 $\vect{b}$ 提供了信息来源。
 
 \begin{table}[htbp]
   \centering
@@ -119,9 +108,9 @@
 
 \paragraph{图像观测。}任务策略另接收前视相机（场景全局视角）与腕部相机（夹爪局部视角）两路 RGB 图像，由\emph{冻结的} DINOv3-S（ViT-S/16，约 $22$\,M frozen 参数，自监督预训于 LVD-1689M 数据集）~\cite{simeoni2025dinov3} 编码后与 $25$ 维状态观测共享主干（详见\cref{sec:network}）。仿真渲染与真实相机在纹理、光照与噪声分布上的显著差距正是\cref{sec:task_method_motivation} 论证"真机部署需在真机上继续学习"的直接依据。
 
-\paragraph{\texttt{real\_tcp} 的噪声建模。}仿真训练中，$\vect{o}_\text{real}$ 由 MuJoCo 场景真值叠加 $\mathcal{N}(\vect{0}, (0.005\,\text{m})^2\mathbf{I})$ 高斯噪声得到。$5\,\text{mm}$ 量级与本文真机 ArUco 标定的实测中位误差量级相符（具体标定流程见\cref{ch:real_robot}），以降低 sim-to-real 迁移时因未建模噪声引起的性能衰减。
+\paragraph{\texttt{real\_tcp} 的噪声建模。}仿真训练中，$\vect{o}_\text{real}$ 由 MuJoCo 场景真值叠加 $\mathcal{N}(\vect{0}, (0.005\,\text{m})^2\mathbf{I})$ 高斯噪声得到。$5\,\text{mm}$ 量级与本文真机 ArUco 标定的实测中位误差量级相符（具体标定流程见\cref{ch:real_chapter}），以降低 sim-to-real 迁移时因未建模噪声引起的性能衰减。
 
-\paragraph{TCP 定位方案的抽象化。}本章不将 $\vect{o}_\text{real}$ 绑定到具体实现——可选方案包括 ArUco 或 AprilTag 视觉标记、OptiTrack 光学动捕等，只要该通路满足三条最小要求：独立于关节编码器、能以米制给出 TCP 位置、典型噪声量级与 $5$\,mm 可比。具体选型与标定细节见\cref{ch:real_robot}。
+\paragraph{TCP 定位方案的抽象化。}本章不将 $\vect{o}_\text{real}$ 绑定到具体实现——可选方案包括 ArUco 或 AprilTag 视觉标记、OptiTrack 光学动捕等，只要该通路满足三条最小要求：独立于关节编码器、能以米制给出 TCP 位置、典型噪声量级与 $5$\,mm 可比。具体选型与标定细节见\cref{ch:real_chapter}。
 
 \section{随机偏差训练}\label{sec:random_bias}
 
@@ -135,258 +124,9 @@
 
 网络架构与训练超参的具体形式统一在\cref{sec:network} 给出，适用于本章仿真与真机两条路径。
 
-\section{HIL-SERL 训练框架}\label{sec:hilserl}
-
-\cref{sec:task_method_motivation} 的设计选择三指出，仿真侧采用 HIL-SERL 验证可观测性命题与随机偏差鲁棒训练。本节给出实现这一目标的具体框架：以 Luo 等人提出的 HIL-SERL~\cite{luo2025hilserl} 为主干，以人在回路干预为持续纠错信号，并通过 Actor-Learner 分布式架构支撑高吞吐异步采样。配套的 H1–H3 实证与残差 RL 对照见\cref{ch:experiments}；真机部署因 sparse reward 加小数据下 SAC 收敛性问题改用 BC pretrain 与 HG-DAgger，详见\cref{sec:bc_dagger}。
-
-\paragraph{算法栈。}框架的底层是连续动作空间上的 Soft Actor-Critic~\cite{haarnoja2018sac}；其上，Ball 等人提出的 RLPD~\cite{ball2023rlpd} 通过两个回放缓冲区的 50/50 混合采样为稀疏奖励任务提供 demo 引导——\emph{离线演示缓冲区}预先装入 50 条人类遥操作的成功 episode，\emph{在线缓冲区}收集策略与环境的实时交互，每一步梯度更新都从两侧各采一半，不修改 SAC 损失；本文沿用 RLPD 的高 UTD 比例与 LayerNorm 设计以稳定 critic 训练（两阶段的具体训练流程见\cref{sec:network}）。HIL-SERL 则在 RLPD 之上进一步将人在回路干预作为训练数据的一等来源贯穿整个在线训练过程（干预数据的具体处理见下段）。
-
-\paragraph{人在回路干预。}在线采样过程中，训练者可通过遥操作设备（键盘、SpaceMouse 等）介入策略正在执行的 episode 并直接给出期望动作；这一"在策略失败的区域由人类示教补充纠错"的思路可追溯到 Ross 等人提出的 DAgger~\cite{ross2011dagger}。干预期间产生的转移被统一追加到离线演示缓冲区。本文最初曾尝试仅保留"最终成功"的干预 episode，但在实现与训练过程中发现两点问题：(i)~转移以步为单位写入缓冲区而非按 episode 组织，按成功与否回溯分割需引入额外的边界判定逻辑，且容易因失败率较高而整体丢弃大量有效监督；(ii)~即便 episode 最终未能完成抓取，人类干预所给出的动作方向本身也是可供策略学习的纠错梯度信号。因此最终统一保留所有干预转移，不再依赖最终成功与否进行过滤。
-
-\paragraph{分布式训练架构。}\cref{fig:hilserl_arch} 示意训练系统的两个异步进程。Actor 进程持有策略权重副本，负责与仿真环境交互、接收 HIL 干预、把转移写入在线缓冲区；Learner 进程持有两个缓冲区与优化器，负责混合采样、计算 SAC 损失、更新 actor/critic 与温度参数，并定期把最新权重同步给 Actor。两侧通过 gRPC 通讯，使环境采样与梯度更新完全解耦——Learner 以最快速度执行梯度步，Actor 只需按固定的物理控制频率稳定收集转移，梯度计算不会阻塞 env step。该架构同时为日后真机训练保留通路（虽本文真机阶段最终采用 BC 与 HG-DAgger，详见\cref{sec:bc_dagger}）。
-
-\begin{figure}[htbp]
-  \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    proc/.style={draw, rounded corners=4pt, inner sep=8pt, align=left, minimum width=5cm},
-  ]
-    \node[proc, fill=blue!5, label={[font=\small\bfseries]above:Actor 进程}] (actor) {%
-      \scriptsize
-      $\bullet$ 环境（仿真 / 真机）\\
-      $\bullet$ 策略权重副本\\
-      $\bullet$ HIL 干预接口%
-    };
-    \node[proc, fill=orange!5, right=2cm of actor, label={[font=\small\bfseries]above:Learner 进程}] (learner) {%
-      \scriptsize
-      $\bullet$ 离线缓冲区 + 在线缓冲区\\
-      $\bullet$ SAC 损失 \& 优化器\\
-      $\bullet$ 权重更新%
-    };
-
-    \draw[->, thick] ($(actor.east)+(0,0.3)$) -- ($(learner.west)+(0,0.3)$) node[midway, above, font=\scriptsize] {转移 (gRPC)};
-    \draw[<-, thick] ($(actor.east)+(0,-0.3)$) -- ($(learner.west)+(0,-0.3)$) node[midway, below, font=\scriptsize] {权重 (gRPC)};
-  \end{tikzpicture}
-  \caption{HIL-SERL 的 Actor-Learner 分布式架构。Actor 负责与环境交互、接收 HIL 干预、写入在线缓冲区；Learner 持有缓冲区与优化器，负责混合采样、SAC 更新并回推权重。两侧通过 gRPC 通讯，环境采样与梯度更新完全解耦。}
-  \label{fig:hilserl_arch}
-\end{figure}
-
-\section{真机部署框架：BC pretrain 与 HG-DAgger 模仿迭代}\label{sec:bc_dagger}
-
-\cref{sec:task_method_motivation} 设计选择三已论证：真机 sparse reward 与 $50$–$200$ demo 量级的小数据条件下，SAC online 阶段的 actor 解冻会导致策略大幅漂移（详细复盘见\cref{subsec:hilserl_failure}）。本文真机阶段改用 Kelly 等人提出的 HG-DAgger~\cite{kelly2019hgdagger}——基于 BC pretrain 的初始策略加操作员介入式纠错——完成三任务的部署与评估。本节依次给出真机观测的简化形式、BC pretrain 协议、HG-DAgger 介入迭代协议、三任务部署管线，以及方法论级负面结论的概括。
-
-\subsection{真机 14 维观测}\label{subsec:real_obs}
-
-真机部署观测从\cref{sec:obs_design} 描述的仿真 $25$ 维进一步简化为 $14$ 维（\cref{tab:obs_real_14d}），通路差异如\cref{fig:obs_real_14d} 所示。三处简化背后的考量：
-
-\begin{enumerate}
-  \item \emph{物体位置交由视觉路径}——目标定位完全依赖前视相机视觉特征（与仿真观测描述一致，详见\cref{subsec:obs_vector} 脚注）；
-  \item \emph{编码器路径暂不进观测}——TCP 信号统一来自外部独立通道（\cref{prop:identifiable} 中已被仿真验证的"成功信号路径"），使真机首跑专注于 sim-to-real 部署 pipeline 与端到端成功率验证；
-  \item \emph{人手通道交由 supervisor 外部消费}——切换决策由\cref{ch:backup_policy} 层次化监督器在策略外部根据距离判据完成。
-\end{enumerate}
-
-简化后的 $14$ 维与 HIL-SERL 框架内 \texttt{ram\_insertion} 任务的 proprio 子集对齐，便于复用上游 buffer 与 episode 边界处理逻辑。这些简化共同导致真机层的偏差鲁棒性闭环——同时投入"被污染编码器信号"与"外部位置信号"两路——留作\cref{ch:conclusion} 的两步 future work 消融（先验证仅有 \texttt{tcp\_biased} 时失败、再验证补 $\vect{q}+\vect{b}$ 后恢复成功）。
-
-\textbf{由此带来的范围限定。}\cref{ch:experiments} 中三任务真机成功率矩阵 "有 bias" 列验证的是\emph{故障注入下经特权信号通路的端到端成功率}——即"sim 已证可行的成功信号路径在真机上仍能跑通"，并\emph{不}直接验证\cref{prop:identifiable} 中"被污染编码器信号 $+$ 外部位置信号"的隐式辨识机制；后者仍是仿真专属论断（H2/H3），其真机版闭环在上述两步消融完成后才能下。
-
-\begin{table}[htbp]
-  \centering
-  \caption{真机部署的 $14$ 维状态观测构成}
-  \label{tab:obs_real_14d}
-  \small
-  \begin{tabular}{@{}clcl@{}}
-    \toprule
-    索引 & 分量 & 维度 & 来源 \\
-    \midrule
-    $[0, 6]$  & 真实 TCP 位姿（xyz $+$ 四元数 xyzw） & 7 & 外部独立通道（绕过偏差） \\
-    $[7, 12]$ & 末端 6D 速度（线速度 3D $+$ 角速度 3D） & 6 & 末端雅可比与关节速度乘积 $\mat{J}(\vect{q}) \cdot \dot{\vect{q}}$ \\
-    $13$      & 夹爪开度 $\in [0, 1]$ & 1 & 夹爪状态反馈 \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-\begin{figure}[htbp]
-  \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    keep/.style={draw, rounded corners=3pt, inner sep=5pt, align=center, fill=green!10, minimum height=0.9cm},
-    drop/.style={draw, dashed, rounded corners=3pt, inner sep=5pt, align=center, text=gray!55, minimum height=0.9cm},
-    rowlabel/.style={font=\bfseries\small, anchor=east},
-  ]
-    % SIM row
-    \node[rowlabel] at (-0.2, 0) {仿真 25D};
-    \node[drop] (s1) at (2.4, 0) {\scriptsize\color{gray!55} 编码器路径 18D};
-    \node[drop] (s2) at (5.4, 0) {\scriptsize\color{gray!55} hand 通道 4D};
-    \node[keep] (s3) at (8.0, 0) {\scriptsize $\vect{o}_\text{real}$ 3D};
-    % strikethrough
-    \draw[red!80, thick] (s1.north west) -- (s1.south east);
-    \draw[red!80, thick] (s1.south west) -- (s1.north east);
-    \draw[red!80, thick] (s2.north west) -- (s2.south east);
-    \draw[red!80, thick] (s2.south west) -- (s2.north east);
-
-    % REAL row
-    \node[rowlabel] at (-0.2, -1.9) {真机 14D};
-    \node[keep] (r1) at (2.4, -1.9) {\scriptsize \texttt{tcp\_true} 7D (xyz $+$ quat)};
-    \node[keep] (r2) at (5.4, -1.9) {\scriptsize 末端 6D 速度};
-    \node[keep] (r3) at (8.0, -1.9) {\scriptsize gripper 1D};
-
-    % link sim->real for kept channel
-    \draw[->, green!50!black, thick] (s3.south) to[bend left=12]
-      node[midway, right, font=\scriptsize, color=green!50!black] {扩展 ($+$ quat 4D)} (r1.north east);
-  \end{tikzpicture}
-  \caption{真机 14 维观测与仿真 25 维（\cref{fig:obs_dataflow}）的通路差异。仿真侧编码器路径 18D（$\vect{q}+\vect{b}$、$\dot{\vect{q}}$、夹爪开度、$\text{FK}(\vect{q}+\vect{b})$）与 hand 通道 4D（$h_\text{active}$、$\vect{p}_\text{hand}$）在真机暂不进观测（红色叉号）；仅 $\vect{o}_\text{real}$ 通路保留并扩展为含四元数的 7D 真实 TCP 位姿（\texttt{tcp\_true}），加末端 6D 速度（线速度 $+$ 角速度，由 $\mat{J}(\vect{q}) \cdot \dot{\vect{q}}$ 算得）与夹爪开度构成 14D。$\vect{o}_\text{real}$ 即\cref{prop:identifiable} 中已被仿真验证的"成功信号路径"，由\cref{ch:real_robot} 的 ArUco 外部独立通道提供。}
-  \label{fig:obs_real_14d}
-\end{figure}
-
-图像观测沿用\cref{subsec:obs_image_tcp} 描述的双相机配置（前视加腕部、$128 \times 128$、frozen DINOv3-S 共享编码器），具体硬件 serial 与 image\_crop ROI 标定见\cref{ch:real_robot}。
-
-\subsection{BC pretrain}\label{subsec:bc_pretrain}
-
-BC pretrain 通过监督学习在 demo 数据上训练初始策略，损失函数由\emph{连续动作的 tanh-Gaussian NLL} 与\emph{离散夹爪头的交叉熵}两项加权组成：
-\begin{equation*}
-  L_\text{BC} = \underbrace{-\mathbb{E}_{(s, \vect{a})\sim\mathcal{D}_\text{demo}}\!\left[\log \pi_\phi(\vect{a}^c\mid s)\right]}_{\textstyle L_\text{BC}^\text{cont}}
-  \;+\; \lambda \cdot
-  \underbrace{\mathbb{E}_{(s, a^g)\sim\mathcal{D}_\text{demo}}\!\left[\mathrm{CE}\!\left(Q^g_\psi(s),\, a^g\right)\right]}_{\textstyle L_\text{BC}^\text{disc}},
-\end{equation*}
-其中连续部分采用 tanh-Gaussian 分布（base 分布 $\mathcal{N}(\vect{\mu}(s), \mathrm{diag}(\vect{\sigma}^2(s)))$ 过 Tanh 压缩到 $(-1, 1)^6$，$\log p$ 通过 change-of-variable 加上 Tanh Jacobian 项 $\sum_i \log(1 - a_i^2)$），同时学习 $\vect{\mu}, \vect{\sigma}$ 两路而非仅学 $\vect{\mu}$——这避免了 std 在部署时漂到 random init 任意位置（过小则 OOD 状态无探索余地、过大则采样散布全域）；离散夹爪头 $Q^g$ 输出 $3$ 维 logit 对应 $\{\text{关}, \text{保持}, \text{开}\}$，demo 中的 $a^g \in \{-1, 0, +1\}$ 通过 $\mathrm{round}(a^g)+1$ 映射到 class index；$\lambda = 0.5$ 平衡两项。
-
-$\mathcal{D}_\text{demo}$ 是操作员通过 SpaceMouse 遥操作采集的 demo 集（每任务约 $50$ 条 episode）。$\pi_\phi$ 复用\cref{sec:network} 描述的 SAC 风格网络架构——其中 critic 与温度参数在 BC 期间不参与训练，仅作为 ckpt schema 占位以便日后切换路径时直接 \texttt{--resume} 加载。
-
-工程上须注意三个关键修正：
-\begin{enumerate}
-  \item \emph{临时关闭 encoder detach}。默认 SAC 训练中 actor forward 走 \texttt{detach=True}（让 encoder 由 critic 损失更新而非 actor 损失），但 BC 没有 critic 损失，必须临时把控制此行为的标志 \texttt{actor.encoder\_is\_shared=False}（actor forward 是否对 encoder 输出 detach）关掉，使 BC NLL 能直接反传到 encoder——否则 encoder 停在随机初始化、actor MLP 头只能在随机特征上拟合，部署时输出近常数。
-  \item \emph{$\vect{\sigma}$ 直接 clamp 而非 $\log\vect{\sigma}$}。$\vect{\sigma}(s)$ 直接 clamp 到 $[10^{-5}, 10]$ 而非传统 SAC 风格的 $\log\vect{\sigma} \in [-5, 2]$——后者下界因 $\exp$ 永正而失效，effective range 退化为 $(0, 2]$，BC 训完 std 漂到 $10^{-3}$ 让部署接近 deterministic、online resume 时 entropy bonus 失效。
-  \item \emph{DrQ random\_shift 数据增强}。输入图像应用 DrQ 风格的 random\_shift 数据增强（pad $= 4$ pixel replicate $+$ random crop 回原尺寸），是小数据 BC 在物块位置稍偏的状态下保持鲁棒的关键正则化手段。
-\end{enumerate}
-具体超参（学习率、batch size、训练步数、$\lambda$ 等）见\cref{tab:hyperparams}。
-
-\subsection{HG-DAgger 介入迭代}\label{subsec:hg_dagger}
-
-BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中按需介入纠错；介入帧（包含 BC 不会做的 OOD 修复动作）合并入下一轮 BC 重训。该工作流由 Kelly 等人在 HG-DAgger~\cite{kelly2019hgdagger} 中提出，相对原始 DAgger 的关键改进是\emph{介入触发由人发起而非策略 query}——操作员只在策略失败模式上介入，避免无效介入帧污染数据集。
-
-\paragraph{介入状态机。}操作员介入由 SpaceMouse 推杆量与按键状态共同触发的迟滞状态机检测（\cref{fig:dagger_state_machine}）：
-\begin{itemize}
-  \item \texttt{IDLE} 状态：actions 由 BC 策略生成，介入标记 \texttt{is\_intervention=False}；
-  \item \texttt{IDLE} $\to$ \texttt{ACTIVE} 触发：推杆量 $\lVert sm[:6]\rVert > 0.05$ 或任一按键按下，actions 改由 SpaceMouse 提供并标记为介入；
-  \item \texttt{ACTIVE} $\to$ \texttt{IDLE} 触发：推杆量 $< 0.02$ 持续 \texttt{tail\_k} $= 10$ 帧（约 $1$\,s @ $10$\,Hz）。
-\end{itemize}
-\texttt{tail\_k} 的设计意图是把操作员"释放瞬间"的恢复尾巴帧也保留为介入数据——操作员通常在纠错完成的瞬间释放推杆，此时的 follow-through 帧仍是有价值的纠错信号。
-
-\begin{figure}[htbp]
-  \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    state/.style={draw, circle, minimum width=2.6cm, align=center, font=\scriptsize, inner sep=2pt},
-    idle/.style={state, fill=blue!10},
-    active/.style={state, fill=orange!15},
-  ]
-    \node[idle] (idle) at (0, 0) {%
-      \textbf{IDLE}\\[2pt]
-      actions $=$ BC\\
-      \texttt{is\_intervention}\\
-      $=$ False%
-    };
-    \node[active] (active) at (5.5, 0) {%
-      \textbf{ACTIVE}\\[2pt]
-      actions $=$ SpaceMouse\\
-      \texttt{is\_intervention}\\
-      $=$ True%
-    };
-    \draw[->, thick] (idle) to[bend left=22] node[midway, above, font=\scriptsize, align=center]
-      {$\lVert sm[:6]\rVert > 0.05$\\或任一按键} (active);
-    \draw[->, thick] (active) to[bend left=22] node[midway, below, font=\scriptsize, align=center]
-      {$\lVert sm[:6]\rVert < 0.02$\\持续 \texttt{tail\_k} $= 10$ 帧} (idle);
-  \end{tikzpicture}
-  \caption{HG-DAgger 介入状态机。\texttt{IDLE} 态下 actions 由 BC 策略生成、不标介入；推杆量 $\lVert sm[:6]\rVert > 0.05$ 或任一按键按下时切到 \texttt{ACTIVE}，actions 改由 SpaceMouse 提供并标为介入；推杆量 $< 0.02$ 持续 \texttt{tail\_k} $= 10$ 帧（约 $1$\,s @ $10$\,Hz）后切回 \texttt{IDLE}。\texttt{tail\_k} 把"释放瞬间"的 follow-through 帧也保留为介入数据，捕获恢复尾巴的纠错信号。}
-  \label{fig:dagger_state_machine}
-\end{figure}
-
-\paragraph{迭代协议。}每一轮迭代由"训练—部署—介入—合并"四步循环组成（\cref{fig:dagger_iteration}）：
-\begin{enumerate}
-  \item 加载上一轮 BC ckpt 部署到真机执行 $30$ 个 episode；
-  \item 操作员按需介入，所有 transition 写入 pickle 并每帧带 \texttt{is\_intervention} 标签；
-  \item 合并历史 demo 与本轮 dagger 数据；调用 \texttt{--intervention-only} 模式让原 demo 全保留、新 dagger 仅取介入帧（实测约 $10$–$20\%$）；
-  \item 从零初始化新策略，BC 重训 $20{,}000$ 步；
-  \item 重复直至连续 $5$ 个 episode 介入率 $\le 5\%$ 且 zero-intvn episode 占比 $\ge 80\%$。
-\end{enumerate}
-真机实测一般 $1$–$3$ 轮迭代即可让 \texttt{pickup} 类简单任务进入稳态，详细介入率下降曲线见\cref{ch:experiments}。
-
-\begin{figure}[htbp]
-  \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    box/.style={draw, rounded corners=4pt, inner sep=6pt, align=center, font=\scriptsize, minimum height=1.1cm, minimum width=3.2cm},
-    data/.style={box, fill=blue!8},
-    train/.style={box, fill=orange!12},
-    deploy/.style={box, fill=green!10},
-    halt/.style={draw, dashed, rounded corners=3pt, inner sep=4pt, align=center, font=\scriptsize, fill=gray!8, minimum width=4.5cm},
-  ]
-    \node[data] (demo) at (0, 0) {%
-      \textbf{合并数据集}\\
-      原 demo $+$ 历轮 dagger\\
-      (\texttt{--intervention-only})%
-    };
-    \node[train] (bc) at (6, 0) {%
-      \textbf{BC pretrain}\\
-      $20{,}000$ 步, $L_\text{BC}$\\
-      从零初始化%
-    };
-    \node[deploy] (deploy) at (6, -2.2) {%
-      \textbf{部署 BC ckpt iter $N$}\\
-      真机 $30$ episode\\
-      操作员按需介入%
-    };
-    \node[data] (newdata) at (0, -2.2) {%
-      \textbf{新介入帧}\\
-      \texttt{is\_intervention=True}\\
-      约 $10$–$20\%$ 帧率%
-    };
-
-    \draw[->, thick] (demo) -- node[midway, above, font=\scriptsize] {采样} (bc);
-    \draw[->, thick] (bc) -- node[midway, right, font=\scriptsize] {ckpt} (deploy);
-    \draw[->, thick] (deploy) -- node[midway, above, font=\scriptsize] {pickle} (newdata);
-    \draw[->, thick] (newdata) -- node[midway, left, font=\scriptsize] {merge} (demo);
-
-    \node[halt] at (3, -3.8) {%
-      \textbf{判停准则}：连续 $5$ episode 介入率 $\le 5\%$\\
-      AND zero-intvn episode 占比 $\ge 80\%$%
-    };
-  \end{tikzpicture}
-  \caption{BC $+$ HG-DAgger 迭代工作流。每轮迭代："训练—部署—介入—合并"四步闭环。(1)~从合并数据集（原 demo $+$ 历轮 dagger，\texttt{--intervention-only} 让原 demo 全保留、dagger 仅取介入帧）随机采样 batch，从零初始化新策略训 BC pretrain $20{,}000$ 步；(2)~加载新 ckpt 部署到真机执行 $30$ episode；(3)~操作员按需介入，所有 transition 写入 pickle 带 \texttt{is\_intervention} 标签；(4)~介入帧合并入数据集触发下一轮重训。判停准则同时要求介入率与 zero-intvn 占比满足阈值；真机实测 $1$–$3$ 轮即可让 \texttt{pickup} 类任务进入稳态。}
-  \label{fig:dagger_iteration}
-\end{figure}
-
-\subsection{三任务部署：共享管线与任务级差异}\label{subsec:three_tasks}
-
-本文真机部署覆盖三个厨房场景任务——\texttt{pickup}（抓取物体）、\texttt{wipe}（用海绵擦盘子）、\texttt{pickandplace}（抓取并放置）。三任务共享同一套 $14$ 维观测、DINOv3-S 编码器与 BC 加 HG-DAgger 训练管线，差异仅在三个任务级配置：
-
-\begin{enumerate}
-  \item \emph{夹爪锁定模式}（\texttt{gripper\_locked}：任务级 enum，控制夹爪是否在整 episode 内锁定）：\texttt{wipe} 任务夹爪全程锁定为闭合（\texttt{gripper\_locked="closed"}），其余两任务不锁定；锁定模式下 SpaceMouse 夹爪按键被屏蔽、\texttt{action[6]} 强制为 $-1$，对应的 dataset stats 计算加入 const-channel 守卫避免 min-max 归一化产生 NaN；
-  \item \emph{reset pose 与 workspace ROI}：每个任务有独立的复位位姿与前视相机工作区裁剪框，由鼠标拖拽框选标定后写回 \texttt{calibration\_data/workspace.json}（详见\cref{ch:real_robot}）。复位流程在 unbiased 状态下进行——env.reset 先调用 \texttt{/clear\_encoder\_bias} 让 $\vect{q} \equiv \vect{q}_\text{true}$ 再走 \texttt{\_go\_to\_reset} 三段路径回到 reset pose，复位完成后再注入下一 episode 的偏差，避免初始位置因 bias 漂移污染\cref{ch:experiments} "有 bias / 无 bias" 列对比的初始条件；
-  \item \emph{联合 backup 部署}：每个任务的部署脚本通过\cref{ch:backup_policy} 层次化监督器在距离判据触发时切换到 backup 策略；结合编码器偏差注入开关形成 $4$ 列实验配置（无 bias / 有 bias / 联合 backup 无 bias / 联合 backup 有 bias），对应\cref{ch:experiments} 中三任务联合成功率矩阵。
-\end{enumerate}
-
-\subsection{HIL-SERL 真机失败的方法论复盘}\label{subsec:hilserl_failure}
-
-为让读者完整看到方法论演化，本节简述真机阶段曾尝试 HIL-SERL 路径并失败的经验，详细数据与时序复盘见\cref{ch:experiments}。
-
-\paragraph{主要现象。}从 BC pretrain ckpt 通过 \texttt{--resume} 进入 SAC online 阶段后，actor 解冻的瞬间（\texttt{critic\_only\_online\_steps}（actor 解冻前的纯 critic 训练步数）计数清零、actor 权重不再冻结）即开始大幅漂移——通常 $1$–$2$ 个 episode 内策略输出的 action 幅度与方向均显著偏离 BC 行为，常见模式是机械臂"飞向工作空间边缘"或夹爪持续开合。
-
-\paragraph{多轮修复尝试。}围绕这一问题本文实施了多轮 P0 修复：HTTP 请求加重试与超时容错、温度初始值上调防 $\alpha$ 坍塌、加 \texttt{critic\_only\_online\_steps} 让 critic 先适配真机分布、加 NaN transition 跳过保护、调小 \texttt{action\_scale} 与 \texttt{max\_cart\_speed} 对齐、shared encoder 在 critic-only 阶段冻结、resume 路径修复——这些修复对仿真 HIL-SERL 完全有效（仿真未见漂移），但真机仍未根本解决。
-
-\paragraph{主要根因假设。}在 $50$ 条 demo $+$ 稀疏奖励 $+$ 短 episode 真机条件下，critic 的 Bellman 误差表面被推测为过于平坦——同一状态下不同 action 的 $Q$ 估计几乎不可分，actor 解冻后梯度方向近乎任意。HIL-SERL 在 Luo 等人原文中之所以工作，依赖于真机吞吐量大到能让 critic 通过持续 online interaction 在线 calibrate Q 表面；本文真机吞吐 $10$\,Hz、单 episode $\le 30$\,s，达到那种吞吐量所需的人类介入持续度与硬件可用率本文并不具备。HG-DAgger 不依赖 critic、不需要 Q 表面 calibrate，单调改进的根源直接来自人类介入的纠错梯度，因此对小数据真机场景显著更稳。
-
-\paragraph{尚未排除的替代解释。}本文未对 Q 表面平坦做直接测量（如 $\text{Var}_a Q(s, a)$ 统计），故"Q 平坦"作为根因仍是\emph{主导假设}而非\emph{唯一}解释。其它可能解释包括：(i)~键盘 reward 标签噪声——操作员单帧裁决可能引入数毫秒级延迟与误判，作为 Q-target 监督信号会污染 critic；(ii)~分布失配——BC 训练目标是 MLE 行为克隆而非最大化 Q，初始 actor 与 critic 的 Q-target 分布不一致；(iii)~gRPC 通讯延迟——真机 actor 与 learner 间的权重同步与转移传输有数十毫秒级抖动，可能放大 critic 不稳定。综合现象与既有文献判断 Q 表面平坦最可能为主导因素，但前述替代假设留作未来通过 Q-statistic 实证排除。
-
-\paragraph{为何记入论文。}写明这一负面结论有两点用途：其一，警示后续在\emph{本文所测吞吐量}（$10$\,Hz / 单 episode $\le 30$\,s / $50$ demo 量级）条件下考虑 HIL-SERL 路径的研究者——更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证；其二，强化双端范式的方法论合理性——真机改用 BC 与 HG-DAgger 不是工程妥协，而是对 critic-based RL 在小数据条件下不可解析问题的回避。
-
 \section{网络架构与训练目标}\label{sec:network}
 
-\cref{sec:hilserl} 描述的 HIL-SERL 框架在实现上涉及一个\emph{共享编码器}、三个\emph{独立网络头}、四个\emph{训练损失}以及一个两阶段的训练流程。本节依次给出这些具体形式（\cref{fig:network_arch}）。
+本章描述的任务策略在仿真与真机两端共享同一套网络架构——一个\emph{共享编码器}、三个\emph{独立网络头}与对应的\emph{训练损失定义}。本节依次给出这些具体形式（\cref{fig:network_arch}）；具体训练协议（demo warmup、在线混合采样、HG-DAgger 迭代等）分别见\cref{sec:sim_task_train}（仿真 HIL-SERL）与\cref{sec:real_task_deploy}（真机 BC + HG-DAgger）。
 
 \begin{figure}[htbp]
   \centering
@@ -488,9 +228,7 @@ BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中
 
 真机 BC pretrain 阶段仅采用上一段定义的 $L_\text{BC} = -\mathbb{E}\left[\log \pi_\phi(\vect{a}\mid s)\right]$ 单一损失，optimizer 只更新连续 Actor 的 MLP 头、状态编码器、SpatialLearnedEmbeddings 与投影层；Twin Critic 与离散 Gripper Critic 在 BC 期间保持随机初始化、不参与梯度更新，仅作为 ckpt schema 占位以便日后切换路径时直接 \texttt{--resume} 加载。
 
-\paragraph{仿真训练流程（HIL-SERL）。}与\cref{sec:bc_dagger} 描述的真机离线 BC pretrain 加迭代式介入采集不同，仿真侧的 HIL-SERL 训练由两个在线阶段构成。\emph{Demo warmup 阶段}：训练开始时的前 500 步梯度更新仅从离线缓冲区采样（此时在线缓冲区尚空），用 50 条 demo 为两个 critic 与 actor 建立合理的初始值，避免在线交互起步时因价值函数随机初始化产生不稳定的策略行为。\emph{在线混合采样阶段}：warmup 结束后 Actor 进程开始与仿真环境交互并接收 HIL 干预。其中进入在线阶段后的前 100 个环境步被留作\emph{纯数据收集}（$\texttt{online\_step\_before\_learning}=100$，只向在线缓冲区写入转移而不触发梯度更新），其作用在于让在线缓冲区先积累一小批与当前策略分布匹配的样本，避免在缓冲区几乎为空时就以极度偏置的采样分布破坏 warmup 阶段已获得的初始值。之后进入稳态训练循环：每个环境步触发 2 次梯度更新（$\text{UTD}=2$），每次更新从离线与在线缓冲区各采 $|\mathcal{B}|/2$ 条转移；干预产生的转移按\cref{sec:hilserl} 所述回注离线缓冲区；每 4 个梯度步 Learner 把 Actor 与离散 critic 的最新权重通过 gRPC 同步推送给 Actor 进程。
-
-\paragraph{真机训练流程（BC 与 HG-DAgger）。}真机训练为单进程离线优化加多轮迭代。\emph{BC pretrain 步骤}：从演示集 $\mathcal{D}_\text{demo}$（约 $50$ 条 SpaceMouse 遥操作 episode）随机采样 batch，在 $20{,}000$ 步上最小化 $L_\text{BC}$；每个 batch 含 DrQ 风格的 random\_shift 图像增强（pad $= 4$ pixel replicate $+$ random crop）以提高 OOD 鲁棒性。\emph{HG-DAgger 迭代步骤}：BC ckpt 部署到真机执行 $30$ 个 episode，操作员按需介入（介入触发与 \texttt{tail\_k} 协议见\cref{subsec:hg_dagger}）；介入帧合并入 \texttt{--intervention-only} 数据集，触发下一轮 BC 重训。所有超参数（\cref{tab:hyperparams}）在仿真与真机两条路径上同步给出，便于对照。
+\paragraph{训练协议指针。}sim 与 real 的训练协议（demo warmup、在线混合采样、HG-DAgger 介入迭代等具体步骤）分别在\cref{sec:sim_task_train,sec:real_task_deploy} 给出。两端共享的训练超参数（学习率、batch size、$\gamma$、$\tau$、$\alpha_0$、image augmentation 等）以双列对照形式列于\cref{tab:hyperparams}，本节不再赘述协议细节。
 
 \begin{table}[htbp]
   \centering
@@ -539,11 +277,11 @@ BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中
     0 & \text{否则}.
   \end{cases}
 \end{equation*}
-在仿真训练中，成功判定由 MuJoCo 真值给出：方块与目标板在水平面的投影距离 $\lVert \vect{p}_\text{block}^{xy} - \vect{p}_\text{plate}^{xy}\rVert < 5\,\text{cm}$，且方块 $z$ 坐标 $< 5\,\text{cm}$（即方块已被放下而非悬在半空）。真机中改采用\emph{人工 keyboard reward 协议}替代自动距离判定：操作员通过四键键盘对每条 episode 给出二值 reward 与 episode 控制信号——\texttt{S} 启动 episode、\texttt{Enter} 标记成功（$r=1$，$\textit{terminal}$）、\texttt{Space} 标记失败（$r=0$，$\textit{terminal}$）、\texttt{Backspace} 整条丢弃（设置 \texttt{discard=True} 让本 episode 不进入 replay buffer 或 demo pickle）。该协议同时承担 episode 边界控制（无需自动 timeout 检测）与回放过滤（discard 信号），简化了真机数据闭环；具体实现见\cref{ch:real_robot}。每个 episode 在成功 / 失败 / 丢弃 / 步数上限（$300$ 步 @ $10\,\text{Hz}$，即 $30\,\text{s}$）任一触发时终止；成功时那一步产生 $r_t = 1$，其余步为 $0$。两种机制都给出稀疏二值奖励信号，仅触发源不同（仿真自动判定 vs 真机人工裁决），均不向策略提供距离层面的密集信号。
+在仿真训练中，成功判定由 MuJoCo 真值给出：方块与目标板在水平面的投影距离 $\lVert \vect{p}_\text{block}^{xy} - \vect{p}_\text{plate}^{xy}\rVert < 5\,\text{cm}$，且方块 $z$ 坐标 $< 5\,\text{cm}$（即方块已被放下而非悬在半空）。真机中改采用\emph{人工 keyboard reward 协议}替代自动距离判定：操作员通过四键键盘对每条 episode 给出二值 reward 与 episode 控制信号——\texttt{S} 启动 episode、\texttt{Enter} 标记成功（$r=1$，$\textit{terminal}$）、\texttt{Space} 标记失败（$r=0$，$\textit{terminal}$）、\texttt{Backspace} 整条丢弃（设置 \texttt{discard=True} 让本 episode 不进入 replay buffer 或 demo pickle）。该协议同时承担 episode 边界控制（无需自动 timeout 检测）与回放过滤（discard 信号），简化了真机数据闭环；具体实现见\cref{ch:real_chapter}。每个 episode 在成功 / 失败 / 丢弃 / 步数上限（$300$ 步 @ $10\,\text{Hz}$，即 $30\,\text{s}$）任一触发时终止；成功时那一步产生 $r_t = 1$，其余步为 $0$。两种机制都给出稀疏二值奖励信号，仅触发源不同（仿真自动判定 vs 真机人工裁决），均不向策略提供距离层面的密集信号。
 
 \paragraph{稀疏奖励的可行性。}一般设定下稀疏奖励常因探索困难而难以收敛，但本文两个具体约束使稀疏奖励反而比密集奖励更合适。
 
-(i)~\cref{sec:hilserl} 的 HIL-SERL 训练框架已通过离线 demo 引导（50 条成功 episode $+$ warmup）与训练全程的人在回路干预解决了稀疏奖励最核心的探索瓶颈——策略不必"从零摸索出第一次成功"，demo 与干预已经为 critic 提供了充足的正样本与纠错梯度。\emph{需指出该论证仅适用于仿真}：\cref{subsec:hilserl_failure} 复盘的真机 SAC 漂移现象表明，即便探索瓶颈被 demo $+$ HIL 解决，critic 仍可能因吞吐量限制无法 calibrate Q 表面、actor 解冻后漂移；探索瓶颈与 Q 估计准确性是\emph{两个独立瓶颈}，仿真满足前者即可，真机两者都需满足。本文真机改用不依赖 critic 的 BC $+$ HG-DAgger 正是为了绕过 Q 估计瓶颈。
+(i)~\cref{sec:sim_task_train} 的 HIL-SERL 训练框架已通过离线 demo 引导（50 条成功 episode $+$ warmup）与训练全程的人在回路干预解决了稀疏奖励最核心的探索瓶颈——策略不必"从零摸索出第一次成功"，demo 与干预已经为 critic 提供了充足的正样本与纠错梯度。\emph{需指出该论证仅适用于仿真}：\cref{subsec:hilserl_failure} 复盘的真机 SAC 漂移现象表明，即便探索瓶颈被 demo $+$ HIL 解决，critic 仍可能因吞吐量限制无法 calibrate Q 表面、actor 解冻后漂移；探索瓶颈与 Q 估计准确性是\emph{两个独立瓶颈}，仿真满足前者即可，真机两者都需满足。本文真机改用不依赖 critic 的 BC $+$ HG-DAgger 正是为了绕过 Q 估计瓶颈。
 
 (ii)~除探索瓶颈外，密集奖励本身在本设定下还存在第二重隐患：在编码器偏差下，自然的密集奖励候选（如 $-\lVert\text{FK}(\vect{q}+\vect{b}) - \vect{p}_\text{block}\rVert$ 形式的 TCP-目标距离）本身就是\emph{被污染的信号}——它依赖 $\text{FK}(\vect{q}+\vect{b})$ 而非真实 TCP 位置，因此直接沿该密集信号优化会诱导策略把偏差的几何效应 hack 进 proxy 指标之中、偏离真实目标（即典型的 reward hacking，背景见\cref{ch:related_work}）。
 
