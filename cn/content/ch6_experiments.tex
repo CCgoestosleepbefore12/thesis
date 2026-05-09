@@ -4,7 +4,7 @@
 
 \section{章节引言：真机侧范式与本章组织}\label{sec:real_intro}
 
-承接\cref{sec:sim_to_real_bridge}：仿真章已用 HIL-SERL 训练任务策略并验证可观测性命题（H1–H3 实验闭环），用纯 SAC $+$ DR 训练备份策略并完成 V1$\to$V3$\to$V3b 的奖励与几何演化。本章把这两条已闭环的仿真主线落到真机部署：\cref{sec:real_arch} 先给出系统层基础（双机硬件、B$+$D 双注入点、OSC 与笛卡尔阻抗控制的等价性）;然后\cref{sec:real_task_deploy} 给出任务策略真机部署的完整协议（$14$ 维观测、BC pretrain、HG-DAgger 介入迭代、三任务共享管线，以及 HIL-SERL 真机失败的方法论复盘）;\cref{sec:backup_real_deploy} 给出备份策略真机部署（手部检测 MediaPipe$\to$WiLoR 设计演化、Hierarchical Supervisor 三态 FSM、Route A center-dist 几何对齐）;\cref{sec:real_experiments} 是本论文的核心实验数据——\textbf{三任务 $\times$ \{无 bias / 有 bias / 联合 backup 无 bias / 联合 backup 有 bias\} 的 $4$ 列联合成功率矩阵}，在编码器偏差故障注入下端到端验证"分层 task $\oplus$ backup"框架的有效性;\cref{sec:operator_safety,sec:precision_failure} 收尾给出操作员安全约定、实测精度与多轮 P0 修复总览。
+承接\cref{sec:sim_to_real_bridge}：仿真章已用 HIL-SERL 训练任务策略并验证可观测性命题（H1–H3 实验闭环），用纯 SAC $+$ DR 训练备份策略并完成 V1$\to$V3$\to$V3b 的奖励与几何演化。本章把这两条已闭环的仿真主线落到真机部署：\cref{sec:real_arch} 先给出系统层基础（双机硬件、B$+$D 双注入点、OSC 与笛卡尔阻抗控制的等价性）;然后\cref{sec:real_task_deploy} 给出任务策略真机部署的完整协议（$14$ 维观测、BC pretrain、HG-DAgger 介入迭代、三任务共享管线，以及 HIL-SERL 真机失败的方法论复盘）;\cref{sec:backup_real_deploy} 给出备份策略真机部署（手部检测 MediaPipe$\to$WiLoR 设计演化、Hierarchical Supervisor 三态 FSM、Route A center-dist 几何对齐）;\cref{sec:real_experiments} 是本论文的核心实验数据——\textbf{三任务 $\times$ \{无 bias / 有 bias / 联合 backup 无 bias / 联合 backup 有 bias\} 的 $4$ 列联合成功率矩阵}，在编码器偏差故障注入下端到端验证"分层 task $\oplus$ backup"框架的有效性;\cref{sec:operator_safety} 收尾给出操作员安全约定、实测精度与多轮 P0 修复总览。
 
 与\cref{ch:sim_chapter} 的对应关系：仿真章用 RL（HIL-SERL $+$ SAC$+$DR）验证理论可行性，本真机章用 IL（BC$+$HG-DAgger）完成部署落地;两端在\cref{ch:task_policy} 的共享方法层（$25$ vs $14$ 维观测、共享网络架构、稀疏奖励）上对齐，仅训练算法与具体协议不同。
 
@@ -49,7 +49,7 @@ OSC 控制律为
 \end{equation*}
 表示。两者的核心差异是惯性解耦的有无：OSC 在任务空间提供完全的惯性解耦，CIC 不提供。在本文使用的小步 TCP 增量动作空间（每步 $\leq 0.03$\,m，控制频率 $10$\,Hz）下，关节速度 $\dot{\vect{q}}$ 始终较小，$\mat{\Lambda}$ 与 $\mat{M}_\text{eff} = \mat{J}^{-\top}\mat{M}\mat{J}^{-1}$ 的差距小于一个量级，OSC 与 CIC 的力矩输出在数值上相近。更关键的是，编码器偏差通过\emph{相同路径}影响两者：$\vect{q} \to \mat{J}(\vect{q} + \vect{b}) \to$ 任务空间力 $\to \mat{J}^\top \to$ 关节力矩，因此偏差效应的方向与一阶幅值在 OSC 与 CIC 上一致。差异主要在二阶项（惯性补偿误差），仿真使用的 OSC 等价于一个\textbf{保守的偏差测试平台}——若策略在仿真 OSC 下应对偏差，真机 CIC 下偏差效应通常\emph{更显著}（因 CIC 缺少 $\mat{\Lambda}$ 解耦），策略需具备额外的鲁棒性 margin 才能成功迁移。
 
-\textbf{论证范围。}上述等价性论证不涵盖两类工况：(i)~近奇异构型（雅可比条件数 $\kappa(\mat{J}) \gg 10^2$），$\mat{\Lambda}$ 在奇异点附近发散，OSC 与 CIC 的差距不再"小于一个量级";(ii)~高速运动（关节速度 $\geq 0.5$\,rad/s）下 CIC 的科氏项主导，本节给出的 $\mat{J}^\top \mat{K}_p \Delta\vect{x}$ 一阶项分析失效。本文部署任务在工作空间内远离奇异点（详见\cref{subsec:three_tasks} 的 workspace ROI 标定）且控制频率 $10$\,Hz 下满足"小步"前提，两类工况均不发生。
+\textbf{论证范围。}上述等价性不涵盖近奇异构型（$\kappa(\mat{J}) \gg 10^2$，$\mat{\Lambda}$ 发散）与高速运动（关节速度 $\geq 0.5$\,rad/s，CIC 科氏项主导）;本文部署任务在工作空间内远离奇异点（详见\cref{subsec:three_tasks} workspace ROI 标定）且 $10$\,Hz 控制下满足"小步"前提，两类工况均不发生。
 
 \section{任务策略真机部署：BC pretrain $+$ HG-DAgger}\label{sec:real_task_deploy}
 
@@ -191,15 +191,11 @@ BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中
 
 为让读者完整看到方法论演化，本节简述真机阶段曾尝试 HIL-SERL 路径并失败的经验，详细数据与时序复盘见\cref{subsec:exp_hilserl_failure}。
 
-\paragraph{主要现象。}从 BC pretrain ckpt 通过 \texttt{--resume} 进入 SAC online 阶段后，actor 解冻的瞬间（\texttt{critic\_only\_online\_steps}（actor 解冻前的纯 critic 训练步数）计数清零、actor 权重不再冻结）即开始大幅漂移——通常 $1$–$2$ 个 episode 内策略输出的 action 幅度与方向均显著偏离 BC 行为，常见模式是机械臂"飞向工作空间边缘"或夹爪持续开合。
+\paragraph{现象与修复尝试。}从 BC pretrain ckpt 通过 \texttt{--resume} 进入 SAC online 阶段后，actor 解冻瞬间即出现大幅漂移——通常 $1$–$2$ 个 episode 内策略输出的 action 幅度与方向显著偏离 BC 行为（机械臂飞向工作空间边缘、夹爪持续开合）。围绕该问题本文实施了多轮 P0 修复：HTTP 重试与超时容错、温度初始值上调防 $\alpha$ 坍塌、\texttt{critic\_only\_online\_steps} 让 critic 先适配真机分布、NaN transition 跳过保护、\texttt{action\_scale} 与 \texttt{max\_cart\_speed} 对齐、critic-only 阶段冻结 shared encoder、resume 路径修复——这些修复对仿真 HIL-SERL 完全有效，但真机仍未根本解决。
 
-\paragraph{多轮修复尝试。}围绕这一问题本文实施了多轮 P0 修复：HTTP 请求加重试与超时容错、温度初始值上调防 $\alpha$ 坍塌、加 \texttt{critic\_only\_online\_steps} 让 critic 先适配真机分布、加 NaN transition 跳过保护、调小 \texttt{action\_scale} 与 \texttt{max\_cart\_speed} 对齐、shared encoder 在 critic-only 阶段冻结、resume 路径修复——这些修复对仿真 HIL-SERL 完全有效（仿真未见漂移），但真机仍未根本解决。
+\paragraph{主要根因假设与替代解释。}主导假设是：在 $50$ 条 demo $+$ 稀疏奖励 $+$ 短 episode 真机条件下，critic 的 Bellman 误差表面过于平坦——同一状态下不同 action 的 $Q$ 估计几乎不可分，actor 解冻后梯度方向近乎任意。HIL-SERL 在 Luo 等人原文中工作依赖较高真机吞吐让 critic 在 online interaction 中 calibrate Q 表面，本文真机吞吐 $10$\,Hz、单 episode $\le 30$\,s 不具备该条件;HG-DAgger 不依赖 critic、单调改进直接来自人类纠错梯度，因此更稳。本文未对 Q 表面平坦做直接测量（如 $\text{Var}_a Q(s, a)$ 统计），故该假设仍是\emph{主导}而非\emph{唯一}解释——其它候选包括 (i)~键盘 reward 标签噪声污染 Q-target、(ii)~BC（MLE）与 SAC（max-Q）的 actor / critic 分布失配、(iii)~gRPC 数十毫秒级抖动放大 critic 不稳定。三类替代假设留作未来通过 Q-statistic 实证排除。
 
-\paragraph{主要根因假设。}在 $50$ 条 demo $+$ 稀疏奖励 $+$ 短 episode 真机条件下，critic 的 Bellman 误差表面被推测为过于平坦——同一状态下不同 action 的 $Q$ 估计几乎不可分，actor 解冻后梯度方向近乎任意。HIL-SERL 在 Luo 等人原文中之所以工作，依赖于真机吞吐量大到能让 critic 通过持续 online interaction 在线 calibrate Q 表面;本文真机吞吐 $10$\,Hz、单 episode $\le 30$\,s，达到那种吞吐量所需的人类介入持续度与硬件可用率本文并不具备。HG-DAgger 不依赖 critic、不需要 Q 表面 calibrate，单调改进的根源直接来自人类介入的纠错梯度，因此对小数据真机场景显著更稳。
-
-\paragraph{替代解释与未来排除路径。}本文未对 Q 表面平坦做直接测量（如 $\text{Var}_a Q(s, a)$ 统计），故"Q 平坦"作为根因仍是\emph{主导假设}而非\emph{唯一}解释。其它可能解释包括：(i)~键盘 reward 标签噪声——操作员单帧裁决可能引入数毫秒级延迟与误判，作为 Q-target 监督信号会污染 critic;(ii)~分布失配——BC 训练目标是 MLE 行为克隆而非最大化 Q，初始 actor 与 critic 的 Q-target 分布不一致;(iii)~gRPC 通讯延迟——真机 actor 与 learner 间的权重同步与转移传输有数十毫秒级抖动，可能放大 critic 不稳定。综合现象与既有文献判断 Q 表面平坦最可能为主导因素，但前述替代假设留作未来通过 Q-statistic 实证排除。
-
-\paragraph{为何记入论文。}写明这一负面结论有两点用途：其一，警示后续在\emph{本文所测吞吐量}（$10$\,Hz / 单 episode $\le 30$\,s / $50$ demo 量级）条件下考虑 HIL-SERL 路径的研究者——更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证;其二，强化双端范式的方法论合理性——真机改用 BC 与 HG-DAgger 不是工程妥协，而是对 critic-based RL 在小数据条件下不可解析问题的回避。在未实测 $\text{Var}_a Q(s,a)$ 之前，本节根因分析的最终定位是"\emph{主导假设} $+$ 三条未排除的替代解释"，而非确证根因——读者应将其视为方法论级负面观察而非已封闭的因果论断。
+\paragraph{为何记入论文。}两点用途：其一，警示后续在\emph{本文所测吞吐量}（$10$\,Hz / $\le 30$\,s episode / $50$ demo 量级）条件下考虑 HIL-SERL 的研究者——更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证;其二，强化双端范式的方法论合理性——真机改用 BC 与 HG-DAgger 是对 critic-based RL 在小数据条件下不可解析问题的回避而非工程妥协。读者应将本节定位为方法论级负面观察而非已封闭的因果论断。
 
 \section{备份策略真机部署}\label{sec:backup_real_deploy}
 
@@ -209,15 +205,9 @@ BC ckpt 部署到真机后，操作员通过 SpaceMouse 在策略执行过程中
 
 手掌 3D 位置直接决定碰撞判据 $\lVert \vect{p}_\text{hand} - \text{TCP}\rVert < D_\text{SAFE}$ 的可靠性，是备份策略真机部署的关键依赖。本文经历了一次设计演化：\textbf{初选 MediaPipe Hands $\to$ 部署阶段切换到 WiLoR YOLO $+$ 双参考点几何过滤}。
 
-\paragraph{初选 MediaPipe Hands。}\cref{sec:backup_sim_train} 在仿真层面规划真机部署时初选了 MediaPipe Hands~\cite{zhang2020mediapipe}。理由有三：(i)~备份策略只需要\emph{手掌 3D 位置}这一个输出，不需要完整 MANO 手型或逐指关键点;(ii)~初版碰撞阈值 $8$\,cm 相对 MediaPipe $+$ D455 的累计感知误差 $\sim 2$–$4$\,cm 留有充足 margin;(iii)~MediaPipe 可在 CPU 上实时运行（每帧 $\sim 5$–$10$\,ms），GPU 资源可留给\cref{ch:task_policy} 任务策略的视觉编码器。
+\paragraph{初选与失效。}\cref{sec:backup_sim_train} 在仿真层面规划真机部署时初选了 MediaPipe Hands~\cite{zhang2020mediapipe}（理由：仅需手掌 3D 位置、$8$\,cm 碰撞阈值相对 $\sim 2$–$4$\,cm 累计误差留有 margin、CPU 实时不占 GPU 资源）。但首次真机部署观察到意料之外的失效模式：基于深度学习的手部检测器（含 MediaPipe 与下文 WiLoR）会把 Franka 黑色 \texttt{panda\_hand} 末端识别为人手，supervisor 因此在无人手时持续触发 BACKUP——夹爪与人手在 RGB 域有可比的尺寸、颜色与轮廓，单纯依赖 RGB$+$深度的检测器无法区分。
 
-\paragraph{部署阶段发现的 self-detection 问题。}首次真机部署中观察到一个意料之外的失效模式：基于深度学习的手部检测器（包括 MediaPipe 与下文的 WiLoR）会把 Franka 黑色 \texttt{panda\_hand} 末端的两根 finger 与矩形腕部\emph{识别为人手}，supervisor 因此持续触发 BACKUP，机械臂在没有真实人手出现的情况下不停闪避。这是单纯依赖 RGB$+$深度的检测器在工业场景中固有的盲点——夹爪与人手在 RGB 域有可比的尺寸、颜色与轮廓，检测器无法区分。
-
-\paragraph{切换到 WiLoR $+$ 双参考点几何过滤。}本文最终改用 WiLoR YOLO~\cite{potamias2024wilor}（仅取检测头不取 MANO 重建分支）作为基础检测器，并在其输出上叠加\textbf{双参考点 self-detection 过滤}：以末端机械臂法兰的两个解析参考点为中心——\texttt{panda\_hand} 主体球心（位于 TCP 沿夹爪 $+z$ 方向反向偏移 $0.1034$\,m，即 panda\_hand 法兰原点处）半径 $0.10$\,m，以及 TCP pinch site（两 finger 之间的几何中心）半径 $0.06$\,m;凡 detection 落入任一球内即视为 self-detection 丢弃。
-
-WiLoR 相对 MediaPipe 的优势在两个独立维度上：(i)~\emph{基线检测稳定性}：WiLoR 作为深度学习专用手部检测模型对手势变化、部分遮挡、工业光照下的鲁棒性显著优于 MediaPipe（基线丢检率实测约 $\sim 5\%$ vs MediaPipe 约 $\sim 20\%$），即使在没有 self-detection 问题的场景下 WiLoR 也是更稳的选择;(ii)~\emph{几何过滤的兼容性}：双参考点过滤独立于 base detector，原则上 MediaPipe + 同样过滤亦可降低 self-detection——但 (i) 的基线劣势使 MediaPipe 即便加过滤仍不及 WiLoR。GPU 推理 $\sim 10$–$30$\,ms 在本文系统中可承受。$5$ 个 link 球与 obstacle 的距离判定见\cref{subsec:route_a}。
-
-\paragraph{选型对比表的更新。}\cref{tab:hand_detectors_real} 是本文实际部署后的最终选型对比，相对\cref{sec:backup_sim_train} 仿真层面规划时的对比（按 MediaPipe 单一检测器输出考虑）有两处关键差异：(i)~MediaPipe 因 self-detection 与稳定性问题被弃用;(ii)~WiLoR 由"输出过重"变为"采用 $+$ 双参考点过滤后实测可用"。
+\paragraph{切换到 WiLoR $+$ 双参考点几何过滤。}本文最终改用 WiLoR YOLO~\cite{potamias2024wilor}（仅取检测头不取 MANO 重建分支）作为基础检测器，并叠加\textbf{双参考点 self-detection 过滤}：以两个解析参考点为中心——\texttt{panda\_hand} 主体球心（TCP 沿夹爪 $+z$ 反向偏移 $0.1034$\,m）半径 $0.10$\,m，以及 TCP pinch site（两 finger 几何中心）半径 $0.06$\,m;凡 detection 落入任一球即丢弃。WiLoR 相对 MediaPipe 的优势在两个独立维度：(i)~\emph{基线检测稳定性}更高（实测丢检率 $\sim 5\%$ vs MediaPipe $\sim 20\%$）;(ii)~\emph{几何过滤兼容性}——双参考点过滤独立于 base detector，但 MediaPipe 即便加过滤仍受 (i) 限制不及 WiLoR。GPU 推理 $\sim 10$–$30$\,ms 在本文系统中可承受。$5$ 个 link 球与 obstacle 距离判定见\cref{subsec:route_a}。\cref{tab:hand_detectors_real} 给出实际部署后的最终选型对比。
 
 \begin{table}[htbp]
   \centering
@@ -317,17 +307,9 @@ HomingController 不复用任务策略也不复用备份策略——它是\emph{
 
 \cref{subsec:hilserl_failure} 已经给出 HIL-SERL 真机失败的现象、修复尝试、根因假设与替代解释。本节补充对应数据时序：BC pretrain ckpt（\texttt{pickup\_iter0}）在 \texttt{--resume} 进入 SAC online 后，\texttt{critic\_only\_online\_steps} 预热阶段（actor 冻结）action 输出与 BC 行为一致;\texttt{critic\_only\_online\_steps} 计数清零、actor 解冻的瞬间，action $L_2$ 范数从 $\sim 0.05$ 跳变到 $\sim 0.6$（接近 \texttt{action\_scale} 上限），episode 中 TCP 飞向工作空间边缘 $\geq 3$ 次/episode。多轮 P0 修复（\cref{subsec:hilserl_failure} 列出）后该现象未根本消失，最终切换到 BC $+$ HG-DAgger 路径。
 
-\section{操作员安全约定与失效模式}\label{sec:operator_safety}
+\section{操作员安全、实测精度与多轮修复}\label{sec:operator_safety}
 
-真机部署涉及人机共享工作空间，本节给出本文采用的操作员安全约定：
-
-\begin{itemize}
-  \item \emph{flange $10$\,cm 球禁入}：\cref{sec:hand_detection_evolution} 双参考点过滤的副作用是人手不能伸入 panda\_hand 法兰 $10$\,cm 球内（否则被识别为 self-detection 丢弃，supervisor 看不到障碍）。这是 sim 训练分布外的盲区，操作员须保持安全距离。
-  \item \emph{阻抗收尾抖动 $\pm 2$–$5$\,mm}：阻抗控制器在静止时仍有微小抖动。HOMING 完成判据加 \texttt{done\_consecutive\_n=3} streak 闸门——连续 $3$ 帧 within tol 才判 HOMING 完成切回 TASK，防止抖动单帧瞬时进 tol 切回 TASK 留下定格误差。
-  \item \emph{真机 deploy 不做 episode 自动终止}：真机所有 episode 由操作员通过 keyboard reward 协议人工裁决（\cref{sec:task_reward}），不依赖距离/姿态自动判定;碰撞与夹爪释放等失效由 supervisor 切换到 backup 而非终止 episode。
-\end{itemize}
-
-\section{实测精度与失效复盘}\label{sec:precision_failure}
+\paragraph{操作员安全约定。}真机部署涉及人机共享工作空间，本文采用三条约定：(i)~\emph{flange $10$\,cm 球禁入}——\cref{sec:hand_detection_evolution} 双参考点过滤的副作用是人手伸入该球会被识别为 self-detection 丢弃，操作员须保持安全距离;(ii)~\emph{HOMING 抗抖动}——阻抗控制器静止仍有 $\pm 2$–$5$\,mm 抖动，\texttt{done\_consecutive\_n=3} streak 闸门要求连续 $3$ 帧 within tol 才判 HOMING 完成;(iii)~\emph{真机 deploy 不做 episode 自动终止}——所有 episode 由操作员通过 keyboard reward 协议人工裁决（\cref{sec:task_reward}），碰撞与夹爪释放等失效由 supervisor 切换到 backup。
 
 \paragraph{相机-机器人标定精度。}cam-to-robot 标定使用 SVD 求解（$15$–$20$ 个 ArUco marker 位姿对），中位标定残差 $\sim 15$–$20$\,mm。该精度对应仿真侧 DR 设定的位置噪声 $\sigma = 30$\,mm 范围内，sim2real 迁移在该精度下成立。
 
