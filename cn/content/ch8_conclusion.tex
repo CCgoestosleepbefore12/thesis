@@ -16,7 +16,6 @@
 
 \begin{itemize}
   \item \textbf{真机偏差闭环未完成}——14 维真机观测使用 \texttt{tcp\_true} 特权通道（\cref{subsec:real_obs}），实际绕开了\cref{prop:identifiable} 中"被污染编码器信号 $+$ 外部位置信号"的隐式辨识机制；真机 §6.5 的"有 bias"列仅验证特权信号通路下的端到端成功率，并非完整可辨识性闭环。
-  \item \textbf{物体定位为 placeholder}—— \texttt{environment\_state} 通道当前未接物体检测，目标定位完全依赖前视相机视觉特征。
   \item \textbf{偏差类型受限}——本文仅覆盖 J1 单关节 $+$ 固定/随机两类 episode 内恒定偏差，未涉及温度漂移等时变隐变量与多关节耦合偏差。
   \item \textbf{平台与任务规模}——单一 Franka Panda 平台 $+$ 三个厨房场景任务；范式选择决策原则的可推广性需在更多平台与任务上验证。
   \item \textbf{HIL-SERL negative result 的范围}—— $N=1$ 单平台、$10$\,Hz 单吞吐条件下的观察，且"Q 表面平坦"作为根因仍是\emph{主导假设}而非确证（\cref{subsec:hilserl_failure}）；更高吞吐与更大数据规模下 HIL-SERL 是否仍失败本文未做实证。
@@ -31,5 +30,3 @@
 \paragraph{残差 RL 与离线 RL 真机对照}\cref{sec:residual_rl} 已指出本文未在真机做残差 RL 与 BC $+$ HG-DAgger 的系统对照；未来可补全 residual RL（基础控制器 $+$ RL 残差）与离线 RL（IQL/CQL 在 demo 上）作为 baseline，量化范式选择决策原则的边界。
 
 \paragraph{多关节 / 时变偏差与多故障类型}扩展到多关节耦合偏差、温度漂移类时变隐变量，以及编码器噪声、关节卡死、执行器退化等其他故障类型，验证框架的适用范围。
-
-\paragraph{物体检测接入与 generality 验证}把 \texttt{environment\_state} 通道接入物体检测器（YOLO / SAM 类）实现真值化；并在另一类机器人平台或更多任务上复现"sim/real 双端范式 $+$ 三轴决策原则"的可推广性。
