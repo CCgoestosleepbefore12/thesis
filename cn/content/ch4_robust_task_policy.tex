@@ -72,30 +72,7 @@
 
 \begin{figure}[htbp]
   \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    grp/.style={draw, rounded corners=4pt, inner sep=8pt, align=left},
-    policy/.style={draw, fill=gray!15, rounded corners=3pt, inner sep=6pt, align=center, minimum width=4cm},
-  ]
-    \node[grp, label={[font=\small\bfseries]above:编码器路径 (18D)}] (enc) {%
-      $\vect{q}+\vect{b}$~关节角 (7D)~\textcolor{red!70!black}{\scriptsize [污染]}\\
-      $\dot{\vect{q}}$~关节速度 (7D)\\
-      夹爪开度 (1D)\\
-      $\text{FK}(\vect{q}+\vect{b})$~TCP 位置 (3D)~\textcolor{red!70!black}{\scriptsize [污染]}%
-    };
-    \node[grp, right=1.6cm of enc, label={[font=\small\bfseries]above:外部观测路径 (7D)}] (ext) {%
-      $\vect{o}_\text{real}$~真实 TCP (3D)\\
-      $h_\text{active}$~人手激活 (1D)\\
-      $\vect{p}_\text{hand}$~人手位置 (3D)%
-    };
-
-    \node[policy, below=1.2cm of $(enc.south)!0.5!(ext.south)$] (pi) {策略 $\pi_\theta$};
-
-    \draw[->] (enc.south) -- (enc.south |- pi.north);
-    \draw[->] (ext.south) -- (ext.south |- pi.north);
-    \draw[->] (pi.south) -- ++(0,-0.55) node[right, font=\small] {动作 $\vect{a}_t$};
-  \end{tikzpicture}
+  \includegraphics[width=0.85\textwidth]{fig_4_1_obs_dataflow.png}
   \caption{25 维观测空间的信息通路示意。编码器路径（左，18D）中的关节角与由其导出的 TCP 位置被偏差 $\vect{b}$ 污染，关节速度与夹爪开度不受影响；外部观测路径（右，7D）包含独立 TCP 与人手信息，全部与编码器解耦。两路信号在策略网络处汇合，策略原则上可通过 $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 之间的不一致隐式恢复 $\vect{b}$。}
   \label{fig:obs_dataflow}
 \end{figure}
@@ -134,82 +111,7 @@
 
 \begin{figure}[htbp]
   \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    input/.style={draw, rounded corners=2pt, inner sep=3pt, align=center, font=\scriptsize, minimum width=3.0cm, minimum height=0.55cm, fill=gray!5},
-    enc/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, font=\scriptsize, minimum width=3.3cm, minimum height=2.2cm, fill=blue!8},
-    concat/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, font=\scriptsize, minimum width=11cm, minimum height=0.5cm, fill=green!12},
-    head/.style={draw, rounded corners=2pt, inner sep=4pt, align=center, font=\scriptsize, minimum width=3.3cm, minimum height=2.0cm, fill=orange!10},
-  ]
-    % Row 1: inputs
-    \node[input] (state_in) at (0, 0) {状态 $\vect{s}\in\mathbb{R}^{25}$ (sim) / $\mathbb{R}^{14}$ (real)};
-    \node[input] (front_in) at (4, 0) {前视 RGB $(3, 128, 128)$};
-    \node[input] (wrist_in) at (8, 0) {腕部 RGB $(3, 128, 128)$};
-
-    % Row 2: encoders
-    \node[enc] (state_enc) at (0, -1.85) {%
-      \textbf{状态编码器}\\[1pt]
-      MinMax $\to [-1, 1]$\\
-      Linear$(d_s \to 256)$\\
-      LayerNorm $+$ Tanh\\
-      $\to 256$D%
-    };
-    \node[enc] (front_enc) at (4, -1.85) {%
-      \textbf{图像编码器 (front)}\\[1pt]
-      ImageNet 归一化\\
-      DINOv3-S (冻结, 22M)\\
-      SpatialLearnedEmb $(8)$\\
-      Linear $+$ Dropout$(0.1)$\\
-      LN $+$ Tanh $\to 256$D%
-    };
-    \node[enc] (wrist_enc) at (8, -1.85) {%
-      \textbf{图像编码器 (wrist)}\\[1pt]
-      (同前视路径)\\
-      $\to 256$D%
-    };
-
-    % Row 3: concat
-    \node[concat] (concat) at (4, -3.6) {共享 feature  $\vect{h} \in \mathbb{R}^{768}$};
-
-    % Row 4: heads
-    \node[head] (actor) at (0, -5.3) {%
-      \textbf{连续 Actor}\\[1pt]
-      MLP $[768{,}256{,}256]$ ReLU\\
-      $(\vect{\mu}, \log\vect{\sigma})$:\\
-      Linear$(256\to 6) \times 2$\\
-      TanhSquash $\to \vect{a}^c \in \mathbb{R}^6$%
-    };
-    \node[head] (critic) at (4, -5.3) {%
-      \textbf{Twin Critic $\times 2$}\\[1pt]
-      输入: $[\vect{h};\, \vect{a}^c]$\\
-      MLP $[774{,}256{,}256{,}1]$\\
-      ReLU\\
-      $\to Q_{\theta_{1,2}}(\vect{s}, \vect{a}^c)$%
-    };
-    \node[head] (dcritic) at (8, -5.3) {%
-      \textbf{离散 Gripper Critic}\\[1pt]
-      输入: $\vect{h}$\\
-      MLP $[768{,}256{,}256{,}3]$ ReLU\\
-      $\to \vect{Q}^g \in \mathbb{R}^3$\\
-      \{0:\,关,\ 1:\,保持,\ 2:\,开\}%
-    };
-
-    % Arrows: inputs -> encoders
-    \draw[->] (state_in) -- (state_enc);
-    \draw[->] (front_in) -- (front_enc);
-    \draw[->] (wrist_in) -- (wrist_enc);
-
-    % Arrows: encoders -> concat
-    \draw[->] (state_enc.south) -- (state_enc.south |- concat.north);
-    \draw[->] (front_enc.south) -- (front_enc.south |- concat.north);
-    \draw[->] (wrist_enc.south) -- (wrist_enc.south |- concat.north);
-
-    % Arrows: concat -> heads
-    \draw[->] (actor.north |- concat.south) -- (actor.north);
-    \draw[->] (critic.north |- concat.south) -- (critic.north);
-    \draw[->] (dcritic.north |- concat.south) -- (dcritic.north);
-  \end{tikzpicture}
+  \includegraphics[width=0.85\textwidth]{fig_4_2_network_arch.png}
   \caption{任务策略的网络架构。三路输入（仿真 $25$ 维 / 真机 $14$ 维状态 $+$ 前视、腕部 $128\times 128$ RGB）分别经各自的编码器处理后，按通道拼接为 $768$ 维的共享 feature $\vect{h}$；三个头共享 $\vect{h}$ 作为输入但输出与训练损失各异——连续 Actor 产生 6 维 Cartesian 末端动作、Twin Critic 输出两个标量 Q 值（取最小以抑制高估）、离散 Gripper Critic 输出 3 维 Q 值选择夹爪动作。DINOv3-S 主干在训练中保持冻结，只更新其后的投影层、状态编码器与三个头。仿真 HIL-SERL 训练四个头的所有损失，真机 BC 阶段仅训练连续 Actor（critic 与温度参数作为 ckpt schema 占位）。}
   \label{fig:network_arch}
 \end{figure}

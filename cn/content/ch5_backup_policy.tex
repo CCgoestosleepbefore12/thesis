@@ -27,27 +27,7 @@
 
 \begin{figure}[htbp]
   \centering
-  \begin{tikzpicture}[
-    >={Stealth[length=2mm]},
-    font=\small,
-    proc/.style={draw, rounded corners=4pt, inner sep=8pt, align=left, minimum width=5cm},
-  ]
-    \node[proc, fill=blue!5, label={[font=\small\bfseries]above:Actor 进程}] (actor) {%
-      \scriptsize
-      $\bullet$ 环境（仿真 / 真机）\\
-      $\bullet$ 策略权重副本\\
-      $\bullet$ HIL 干预接口%
-    };
-    \node[proc, fill=orange!5, right=2cm of actor, label={[font=\small\bfseries]above:Learner 进程}] (learner) {%
-      \scriptsize
-      $\bullet$ 离线缓冲区 + 在线缓冲区\\
-      $\bullet$ SAC 损失 \& 优化器\\
-      $\bullet$ 权重更新%
-    };
-
-    \draw[->, thick] ($(actor.east)+(0,0.3)$) -- ($(learner.west)+(0,0.3)$) node[midway, above, font=\scriptsize] {转移 (gRPC)};
-    \draw[<-, thick] ($(actor.east)+(0,-0.3)$) -- ($(learner.west)+(0,-0.3)$) node[midway, below, font=\scriptsize] {权重 (gRPC)};
-  \end{tikzpicture}
+  \includegraphics[width=0.85\textwidth]{fig_5_1_hilserl_arch.png}
   \caption{HIL-SERL 的 Actor-Learner 分布式架构。Actor 负责与环境交互、接收 HIL 干预、写入在线缓冲区;Learner 持有缓冲区与优化器，负责混合采样、SAC 更新并回推权重。两侧通过 gRPC 通讯，环境采样与梯度更新完全解耦。}
   \label{fig:hilserl_arch}
 \end{figure}

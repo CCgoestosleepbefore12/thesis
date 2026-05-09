@@ -65,36 +65,7 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 % TODO[figure]: 后期美化此数据流图，见 docs/todo.md 第 1 项
 \begin{figure}[htbp]
   \centering
-  \begin{tikzpicture}[
-    font=\small,
-    node distance=6mm and 16mm,
-    module/.style={draw, rounded corners=2pt, minimum width=34mm, minimum height=9mm, align=center},
-    source/.style={draw, circle, minimum size=12mm, align=center, fill=gray!10},
-    io/.style={align=center},
-    arr/.style={-{Latex[length=2mm]}, thick}
-  ]
-    % 中央的编码器读数节点
-    \node[source] (enc) {$\vect{q}_{\text{meas}}$};
-    % 三个下游模块
-    \node[module, right=18mm of enc] (pd) {关节 PD 控制器\\ (1\,kHz)};
-    \node[module, above=8mm of pd] (osc) {OSC 控制器\\ $\mat{J},\mat{\Lambda},\text{FK}$};
-    \node[module, below=8mm of pd] (obs) {观测模块\\ $\vect{o} = (\vect{q},\dot{\vect{q}},\text{FK},\ldots)$};
-    % 编码器读数到三个模块
-    \draw[arr] (enc) -- (pd.west);
-    \draw[arr] (enc.north east) -- (osc.west);
-    \draw[arr] (enc.south east) -- (obs.west);
-    % 输入
-    \node[io, left=4mm of enc] (inenc) {编码器};
-    \draw[arr] (inenc) -- (enc);
-    \node[io, above=4mm of osc] (xt) {$\vect{x}_{\text{target}}$};
-    \draw[arr] (xt) -- (osc);
-    \node[io, right=6mm of pd] (tau) {$\vect{\tau}$};
-    \draw[arr] (pd.east) -- (tau);
-    \node[io, right=6mm of osc] (tauosc) {$\vect{\tau}$};
-    \draw[arr] (osc.east) -- (tauosc);
-    \node[io, right=6mm of obs] (pol) {策略 $\pi$};
-    \draw[arr] (obs.east) -- (pol);
-  \end{tikzpicture}
+  \includegraphics[width=0.85\textwidth]{fig_3_1_pipeline_ideal.png}
   \caption[理想情况下的控制与观测数据流]{理想情况下 Franka Panda 的控制与观测数据流。三个下游模块（底层关节 PD、任务层 OSC、观测模块）均以同一个编码器读数 $\vect{q}_{\text{measured}}$ 作为输入。这一共享依赖是编码器偏差能够同时污染控制与观测的结构性原因。（示意图，后期将替换为精修版本。）}
   \label{fig:pipeline_ideal}
 \end{figure}
@@ -175,23 +146,7 @@ $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:
 % TODO[figure]: 后期美化此因果链总图，见 docs/todo.md 第 2 项
 \begin{figure}[htbp]
   \centering
-  \begin{tikzpicture}[
-    font=\small,
-    source/.style={draw, circle, minimum size=14mm, align=center, fill=red!10, thick},
-    effect/.style={draw, rounded corners=2pt, minimum width=42mm, minimum height=11mm, align=center, fill=blue!5},
-    arr/.style={-{Latex[length=2.5mm]}, thick}
-  ]
-    % 中心节点 b
-    \node[source] (b) at (0, 0) {$\vect{b}$};
-    % 三个效应
-    \node[effect] (e1) at (5, 2.5) {效应 \textcircled{\scriptsize 1} 初始位置偏移\\ $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$};
-    \node[effect] (e2) at (5, 0) {效应 \textcircled{\scriptsize 2} 控制偏差\\ $\Delta\vect{\tau}(\vect{b}) \neq \vect{0}$};
-    \node[effect] (e3) at (5, -2.5) {效应 \textcircled{\scriptsize 3} 感知偏差\\ $\vect{q}_{\text{meas}},\,\vect{x}^{\text{FK}}_{\text{ee}}$ 被污染};
-    % 三条箭头
-    \draw[arr] (b.east) -- node[above, sloped, font=\scriptsize] {PD 反馈回路} (e1.west);
-    \draw[arr] (b.east) -- node[above, font=\scriptsize] {OSC 雅可比/FK} (e2.west);
-    \draw[arr] (b.east) -- node[below, sloped, font=\scriptsize] {观测函数} (e3.west);
-  \end{tikzpicture}
+  \includegraphics[width=0.85\textwidth]{fig_3_2_causal_chain.png}
   \caption[编码器偏差的因果链]{编码器偏差 $\vect{b}$ 的因果链："一源三效应"结构。单个关节空间隐变量 $\vect{b}$ 通过三条结构上相互独立的路径——底层 PD 控制器的反馈回路、OSC 控制律中的雅可比与 FK、以及观测函数——同时产生三个可观测的效应。三个效应并非独立故障，而是同一隐变量在不同模块上的投影。（示意图，后期将替换为精修版本。）}
   \label{fig:causal_chain}
 \end{figure}
