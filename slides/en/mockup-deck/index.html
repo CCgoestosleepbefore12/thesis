@@ -1,0 +1,4697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartesian Presentation Template</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #ede8e0;
+            --bg-secondary: #e2dbd1;
+            --text-primary: #1a1a1a;
+            --text-secondary: #5a5a5a;
+            --accent: #8a8178;
+            --line: #b8b0a4;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+        }
+
+        .presentation {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+        }
+
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.6s ease, visibility 0.6s ease;
+            display: flex;
+            flex-direction: column;
+            padding: 4vh 4vw;
+            background: var(--bg-primary);
+            overflow: hidden;
+        }
+
+        .slide.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        /* Geometric decorations */
+        .geo-lines {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 45vw;
+            height: 45vh;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .geo-circle {
+            position: absolute;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            opacity: 0.5;
+        }
+
+        .geo-arc {
+            position: absolute;
+            border: 1px dashed var(--line);
+            border-radius: 50%;
+            opacity: 0.3;
+        }
+
+        /* Navigation */
+        .nav-dots {
+            position: fixed;
+            right: 2vw;
+            top: 50%;
+            transform: translateY(-50%);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            z-index: 100;
+        }
+
+        .nav-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--line);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .nav-dot.active {
+            background: var(--text-primary);
+            transform: scale(1.3);
+        }
+
+        .slide-counter {
+            position: fixed;
+            bottom: 3vh;
+            right: 3vw;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: var(--accent);
+            letter-spacing: 2px;
+            z-index: 100;
+        }
+
+        .nav-arrows {
+            position: fixed;
+            bottom: 3vh;
+            left: 3vw;
+            display: flex;
+            gap: 16px;
+            z-index: 100;
+        }
+
+        .nav-arrow {
+            width: 40px;
+            height: 40px;
+            border: 1px solid var(--line);
+            background: transparent;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+        }
+
+        .nav-arrow:hover {
+            background: var(--text-primary);
+            color: var(--bg-primary);
+        }
+
+        /* Typography */
+        h1, h2, h3 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 400;
+            line-height: 1.1;
+        }
+
+        h1 {
+            font-size: clamp(2.5rem, 5vw, 4.5rem);
+        }
+
+        h2 {
+            font-size: clamp(1.8rem, 3.5vw, 3rem);
+        }
+
+        h3 {
+            font-size: clamp(1.2rem, 2vw, 1.6rem);
+        }
+
+        p, li {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(0.9rem, 1.2vw, 1.1rem);
+            line-height: 1.6;
+            color: var(--text-secondary);
+        }
+
+        .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        /* Slide 1: Title */
+        .slide-title {
+            justify-content: center;
+        }
+
+        .slide-title .content {
+            position: relative;
+            z-index: 1;
+            max-width: 92vw;
+        }
+
+        .slide-title .label {
+            margin-bottom: 3vh;
+        }
+
+        .slide-title h1 {
+            font-size: 3.4vw;
+            margin-bottom: 2vh;
+        }
+
+        .slide-title .subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: clamp(1rem, 1.5vw, 1.3rem);
+            color: var(--text-secondary);
+            max-width: 40vw;
+        }
+
+        /* All geo-decoration instances are decorative overlays, not flex
+           items — they must be absolutely positioned in their slide. The
+           slide-statement instance uses inline left/top/width/height to
+           override the defaults below. */
+        .geo-decoration {
+            position: absolute;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .slide-title .geo-decoration {
+            right: 5vw;
+            bottom: 10vh;
+            width: 30vw;
+            height: 30vw;
+            opacity: 0.4;
+        }
+
+        .slide-title .geo-decoration::before {
+            content: '';
+            position: absolute;
+            top: 10%;
+            left: 10%;
+            width: 80%;
+            height: 80%;
+            border: 1px dashed var(--line);
+            border-radius: 50%;
+        }
+
+        /* Slide 2: Agenda */
+        .slide-agenda .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6vw;
+            align-items: center;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-agenda .left-col h2 {
+            margin-bottom: 3vh;
+        }
+
+        .slide-agenda .left-col p {
+            max-width: 30vw;
+        }
+
+        .slide-agenda .agenda-list {
+            list-style: none;
+        }
+
+        .slide-agenda .agenda-list li {
+            padding: 2vh 0;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            align-items: baseline;
+            gap: 2vw;
+        }
+
+        .slide-agenda .agenda-number {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.5rem;
+            color: var(--accent);
+            min-width: 3vw;
+        }
+
+        /* Slide 3: Statement */
+        .slide-statement {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .slide-statement .content {
+            max-width: 60vw;
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+        }
+
+        .slide-statement .quote-mark {
+            font-family: 'Playfair Display', serif;
+            font-size: 5rem;
+            line-height: 1;
+            color: var(--line);
+            opacity: 0.5;
+            display: block;
+            margin-bottom: 2vh;
+        }
+
+        .slide-statement h2 {
+            font-style: italic;
+            margin-bottom: 3vh;
+        }
+
+        .slide-statement .attribution {
+            font-size: 0.85rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        /* Slide 4: Bar Chart */
+        .slide-barchart .content {
+            display: grid;
+            grid-template-columns: 1fr 1.5fr;
+            gap: 5vw;
+            align-items: center;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-barchart .left-col h2 {
+            margin-bottom: 2vh;
+        }
+
+        .slide-barchart .chart-container {
+            position: relative;
+            height: 55vh;
+            width: 100%;
+        }
+
+        /* Slide 5: Two Column */
+        .slide-twocol .content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5vw;
+            align-items: center;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-twocol .image-placeholder {
+            width: 100%;
+            height: 60vh;
+            background: var(--bg-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid var(--line);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .slide-twocol .image-placeholder::before {
+            content: '';
+            position: absolute;
+            width: 150%;
+            height: 1px;
+            background: var(--line);
+            transform: rotate(-30deg);
+        }
+
+        .slide-twocol .image-placeholder::after {
+            content: '';
+            position: absolute;
+            width: 150%;
+            height: 1px;
+            background: var(--line);
+            transform: rotate(30deg);
+        }
+
+        .slide-twocol .image-label {
+            position: relative;
+            z-index: 1;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--accent);
+        }
+
+        .slide-twocol .right-col h2 {
+            margin-bottom: 2vh;
+        }
+
+        .slide-twocol .right-col p {
+            margin-bottom: 2vh;
+        }
+
+        .slide-twocol .stats {
+            display: flex;
+            gap: 3vw;
+            margin-top: 4vh;
+            padding-top: 3vh;
+            border-top: 1px solid var(--line);
+        }
+
+        .slide-twocol .stat-item h4 {
+            font-family: 'Playfair Display', serif;
+            font-size: 2rem;
+            margin-bottom: 0.5vh;
+        }
+
+        .slide-twocol .stat-item span {
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Slide 6: Three Cards */
+        .slide-cards {
+            justify-content: center;
+        }
+
+        .slide-cards .content {
+            position: relative;
+            z-index: 1;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .slide-cards .header {
+            text-align: center;
+            margin-bottom: 6vh;
+        }
+
+        .slide-cards .header h2 {
+            margin-bottom: 1vh;
+        }
+
+        .slide-cards .cards-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 3vw;
+        }
+
+        .slide-cards .card {
+            border: 1px solid var(--line);
+            padding: 4vh 2vw;
+            background: rgba(255,255,255,0.3);
+        }
+
+        .slide-cards .card-icon {
+            width: 40px;
+            height: 40px;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 3vh;
+            font-size: 1rem;
+            color: var(--accent);
+        }
+
+        .slide-cards .card h3 {
+            margin-bottom: 2vh;
+            font-size: 1.3rem;
+        }
+
+        .slide-cards .card p {
+            font-size: 0.9rem;
+        }
+
+        /* Slide 7: Line Chart */
+        .slide-linechart .content {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-linechart .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 4vh;
+        }
+
+        .slide-linechart .chart-wrapper {
+            flex: 1;
+            position: relative;
+            min-height: 0;
+        }
+
+        .slide-linechart .chart-wrapper canvas {
+            max-height: 100%;
+        }
+
+        /* Slide 8: Timeline */
+        .slide-timeline .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-timeline .header {
+            margin-bottom: 6vh;
+        }
+
+        .slide-timeline .timeline {
+            display: flex;
+            justify-content: space-between;
+            position: relative;
+            padding-top: 3vh;
+        }
+
+        .slide-timeline .timeline::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: var(--line);
+        }
+
+        .slide-timeline .timeline-item {
+            flex: 1;
+            padding-right: 3vw;
+            position: relative;
+        }
+
+        /* Phase markers removed — the labels alone provide enough structure
+           and the small circles were colliding with the start of each label. */
+        .slide-timeline .timeline-item::before {
+            content: none;
+        }
+
+        .slide-timeline .timeline-item h4 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.2rem;
+            margin-bottom: 1vh;
+            margin-top: 2vh;
+        }
+
+        .slide-timeline .timeline-item .year {
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 1vh;
+        }
+
+        .slide-timeline .timeline-item p {
+            font-size: 0.85rem;
+        }
+
+        /* Slide 9: Team */
+        .slide-team .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-team .header {
+            text-align: center;
+            margin-bottom: 6vh;
+        }
+
+        .slide-team .team-grid {
+            display: flex;
+            justify-content: center;
+            gap: 4vw;
+        }
+
+        .slide-team .team-member {
+            text-align: center;
+        }
+
+        .slide-team .member-photo {
+            width: 12vw;
+            height: 12vw;
+            border-radius: 50%;
+            background: var(--bg-secondary);
+            margin: 0 auto 2vh;
+            border: 1px solid var(--line);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2rem;
+            color: var(--accent);
+        }
+
+        .slide-team .team-member h4 {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.2rem;
+            margin-bottom: 0.5vh;
+        }
+
+        .slide-team .team-member span {
+            font-size: 0.8rem;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* Slide 10: Closing */
+        .slide-closing {
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .slide-closing .content {
+            position: relative;
+            z-index: 1;
+        }
+
+        .slide-closing h1 {
+            margin-bottom: 3vh;
+        }
+
+        .slide-closing p {
+            margin-bottom: 4vh;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 3px;
+            font-size: 0.9rem;
+        }
+
+        .slide-closing .geo-ring {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 50vw;
+            height: 50vw;
+            border: 1px solid var(--line);
+            border-radius: 50%;
+            opacity: 0.3;
+            z-index: 0;
+        }
+
+        .slide-closing .geo-ring::before {
+            content: '';
+            position: absolute;
+            top: 15%;
+            left: 15%;
+            width: 70%;
+            height: 70%;
+            border: 1px dashed var(--line);
+            border-radius: 50%;
+        }
+
+        /* Vertical line decoration */
+        .vertical-line {
+            position: absolute;
+            left: 8vw;
+            top: 0;
+            width: 1px;
+            height: 100%;
+            background: var(--line);
+            opacity: 0.3;
+            z-index: 0;
+        }
+
+        /* Horizontal accent */
+        .horizontal-accent {
+            position: absolute;
+            bottom: 15vh;
+            left: 0;
+            width: 20vw;
+            height: 1px;
+            background: var(--text-primary);
+            z-index: 0;
+        }
+
+        @media (max-aspect-ratio: 4/3) {
+            .slide-agenda .content,
+            .slide-barchart .content,
+            .slide-twocol .content {
+                grid-template-columns: 1fr;
+                gap: 3vh;
+            }
+
+            .slide-cards .cards-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .slide-timeline .timeline {
+                flex-direction: column;
+                gap: 3vh;
+            }
+
+            .slide-timeline .timeline::before {
+                display: none;
+            }
+
+            .slide-team .team-grid {
+                flex-direction: column;
+                gap: 3vh;
+            }
+        }
+
+        /* ╔══════════════════════════════════════════════════════════════════╗
+           ║  THESIS MOCKUP COMPONENTS (S1 cover · S6 frame · S13 matrix)      ║
+           ╚══════════════════════════════════════════════════════════════════╝ */
+
+        /* --- S1 cover: Uni Stuttgart branding -------------------------- */
+        .slide-title .uni-logo {
+            position: absolute;
+            top: 5vh;
+            left: 4vw;
+            height: 7vh;
+            width: auto;
+            opacity: 0.85;
+        }
+        .slide-title .institute-name {
+            position: absolute;
+            top: 14vh;
+            left: 4vw;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 500;
+            line-height: 1.3;
+            color: var(--text-primary);
+            letter-spacing: 0.02em;
+        }
+        .slide-title .ias-sublogo {
+            position: absolute;
+            bottom: 4vh;
+            right: 4vw;
+            height: 5vh;
+            width: auto;
+            opacity: 0.95;
+        }
+
+        /* --- S1 cover ---------------------------------------------------- */
+        .cover-content {
+            margin: auto 0 auto 4vw;
+            max-width: 88vw;
+        }
+        .cover-content .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 3vh;
+        }
+        .cover-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.9vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+            margin-bottom: 4vh;
+            max-width: 78vw;
+        }
+        .cover-title em {
+            font-style: italic;
+            font-weight: 400;
+            color: var(--text-primary);
+        }
+        .cover-subtitle {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            max-width: 52vw;
+            margin-bottom: 6vh;
+        }
+        .cover-meta {
+            display: flex;
+            gap: 3.5vw;
+            padding-top: 2.4vh;
+            border-top: 1px solid var(--line);
+            max-width: 60vw;
+        }
+        .cover-meta .meta-item {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+        .cover-meta .meta-key {
+            display: block;
+            font-size: 0.78rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.6vh;
+        }
+
+        /* --- Chapter divider (§N + name) --------------------------------- */
+        .slide-divider {
+            justify-content: center;
+            align-items: center;
+            padding: 0;
+        }
+        .divider-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2.4vh;
+        }
+        .divider-num {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 7vw;
+            line-height: 1;
+            color: var(--text-primary);
+            letter-spacing: 0.02em;
+        }
+        .divider-rule {
+            width: 8vw;
+            height: 1.5px;
+            background: var(--text-primary);
+        }
+        .divider-name {
+            font-family: 'Playfair Display', serif;
+            font-weight: 400;
+            font-style: italic;
+            font-size: 2.8vw;
+            color: var(--text-primary);
+            letter-spacing: 0.01em;
+        }
+        .divider-sub {
+            font-family: 'Inter', sans-serif;
+            font-weight: 300;
+            font-size: 1.05rem;
+            color: var(--accent);
+            letter-spacing: 0.04em;
+            margin-top: 1.4vh;
+            max-width: 60vw;
+            text-align: center;
+        }
+
+        /* --- Page footer (all non-cover slides) -------------------------- */
+        .page-footer {
+            position: fixed;
+            bottom: 3vh;
+            left: 4vw;
+            display: flex;
+            align-items: center;
+            gap: 2.4vw;
+            z-index: 100;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            letter-spacing: 0.04em;
+        }
+        .page-footer .footer-uni {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .page-footer .footer-date {
+            color: var(--accent);
+        }
+
+        /* --- Agenda (S2) ------------------------------------------------- */
+        .slide-agenda-new .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 4vh 6vw;
+        }
+        .slide-agenda-new .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 3vh;
+        }
+        .slide-agenda-new h2 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 3.4vw;
+            line-height: 1.15;
+            color: var(--text-primary);
+            margin-bottom: 6vh;
+            max-width: 70vw;
+        }
+        .slide-agenda-new h2 em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .agenda-list {
+            list-style: none;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.4vh 6vw;
+            max-width: 78vw;
+        }
+        .agenda-list li {
+            display: flex;
+            align-items: baseline;
+            gap: 1.4vw;
+            padding-bottom: 1.6vh;
+            border-bottom: 1px solid var(--line);
+        }
+        .agenda-num {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 400;
+            font-size: 1.6rem;
+            color: var(--accent);
+            min-width: 2.4rem;
+        }
+        .agenda-text {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.15rem;
+            color: var(--text-primary);
+            font-weight: 400;
+        }
+        .agenda-sub {
+            display: block;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            font-weight: 300;
+            margin-top: 0.4vh;
+        }
+
+        /* --- Real-Robot System Setup (fig_6_1) -------------------------- */
+        .slide-realsetup .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 2.4vh 3vw 6vh 3vw;
+            gap: 1.4vh;
+        }
+        .rs-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.8vh;
+        }
+        .rs-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.7vw;
+            line-height: 1.18;
+            color: var(--text-primary);
+        }
+        .rs-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .rs-figure-wrap {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .rs-figure {
+            max-width: 99vw;
+            max-height: 78vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+        }
+        .rs-caption {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.4;
+            text-align: center;
+            padding-top: 1vh;
+            border-top: 1px solid var(--line);
+        }
+        .rs-caption em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .rs-caption .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        .rs-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- HG-DAgger Convergence -------------------------------------- */
+        .slide-dagger-conv .content {
+            display: flex; flex-direction: column; justify-content: center; height: 100%;
+            padding: 2.4vh 4vw 6vh 4vw; gap: 1.6vh;
+        }
+        .dc-head .label {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; letter-spacing: 0.22em;
+            text-transform: uppercase; color: var(--accent); margin-bottom: 0.8vh;
+        }
+        .dc-headline {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.85vw;
+            line-height: 1.2; color: var(--text-primary);
+        }
+        .dc-headline em { font-style: italic; font-weight: 400; }
+        .dc-chart-wrap { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: center; }
+        .dc-svg { width: 100%; max-width: 64vw; max-height: 56vh; height: auto; }
+        .dc-grid { stroke: var(--line); stroke-width: 0.8; stroke-dasharray: 2 3; }
+        .dc-axis { stroke: var(--text-primary); stroke-width: 1.2; }
+        .dc-tick { font-family: 'IBM Plex Mono', monospace; font-size: 11px; fill: var(--text-secondary); }
+        .dc-axis-title { font-family: 'Inter', sans-serif; font-size: 12px; fill: var(--text-secondary); }
+        .dc-line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+        .dc-line-pick { stroke: var(--text-primary); stroke-width: 2.6; }
+        .dc-line-wipe { stroke: var(--text-secondary); stroke-width: 2; stroke-dasharray: 5 4; }
+        .dc-line-pap  { stroke: #b8553e; stroke-width: 2.4; }
+        .dc-dots-pick circle { fill: var(--text-primary); }
+        .dc-dots-wipe circle { fill: var(--bg-primary); stroke: var(--text-secondary); stroke-width: 1.6; }
+        .dc-dots-pap circle  { fill: #b8553e; }
+        .dc-vlbl { font-family: 'IBM Plex Mono', monospace; font-size: 11px; fill: var(--accent); }
+        .dc-legend-label { font-family: 'Inter', sans-serif; font-size: 12px; fill: var(--text-primary); }
+        .dc-conclusion {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; font-weight: 300; color: var(--text-primary);
+            line-height: 1.5; text-align: center; padding-top: 1.2vh; border-top: 1px solid var(--text-primary);
+        }
+        .dc-conclusion .dc-note { font-style: italic; color: var(--text-secondary); font-size: 0.85rem; margin-left: 0.6vw; }
+        .dc-kicker { font-family: 'Playfair Display', serif; font-style: italic; font-size: 1.4rem; color: var(--accent); margin-right: 0.6vw; }
+
+        /* --- Backup on the Real Robot (event-level) --------------------- */
+        .slide-backup-real .content {
+            display: flex; flex-direction: column; justify-content: center; height: 100%;
+            padding: 3vh 5vw 7vh 5vw; gap: 2.4vh;
+        }
+        .br-head .label {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; letter-spacing: 0.22em;
+            text-transform: uppercase; color: var(--accent); margin-bottom: 1.2vh;
+        }
+        .br-headline {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.95vw;
+            line-height: 1.2; color: var(--text-primary);
+        }
+        .br-headline em { font-style: italic; font-weight: 400; }
+        .br-grid { display: grid; grid-template-columns: 1fr 1.2fr; gap: 2.4vw; align-items: start; }
+        .br-label {
+            font-family: 'Inter', sans-serif; font-size: 0.78rem; letter-spacing: 0.14em;
+            text-transform: uppercase; color: var(--accent); padding-bottom: 0.8vh;
+            border-bottom: 1px solid var(--line); margin-bottom: 1.4vh;
+        }
+        .br-wip { color: #b8553e; font-style: italic; text-transform: none; letter-spacing: 0; }
+        .br-stat-list { display: flex; flex-direction: column; gap: 1vh; }
+        .br-stat {
+            display: flex; align-items: baseline; gap: 1vw; padding: 1vh 1.2vw;
+            background: var(--bg-secondary); border-left: 2px solid var(--text-primary);
+        }
+        .br-stat-val { font-family: 'Inter', sans-serif; font-size: 1.4vw; font-weight: 600; color: var(--text-primary); flex-shrink: 0; }
+        .br-stat-key { font-family: 'Inter', sans-serif; font-size: 0.88rem; font-weight: 300; color: var(--text-secondary); }
+        .br-why p {
+            font-family: 'Inter', sans-serif; font-size: 0.95rem; font-weight: 300; line-height: 1.5;
+            color: var(--text-primary); margin-bottom: 1.2vh;
+        }
+        .br-why p em { font-family: 'Playfair Display', serif; font-style: italic; color: var(--text-primary); }
+        .br-why p .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.85rem; color: var(--text-primary); }
+        .br-why-foot { color: var(--text-secondary) !important; font-size: 0.88rem !important; padding-top: 1vh; border-top: 1px solid var(--line); }
+        .br-conclusion {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; font-weight: 300; color: var(--text-primary);
+            line-height: 1.5; text-align: center; padding-top: 1.2vh; border-top: 1px solid var(--text-primary);
+        }
+        .br-conclusion .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.9rem; color: var(--text-primary); }
+        .br-kicker { font-family: 'Playfair Display', serif; font-style: italic; font-size: 1.4rem; color: var(--accent); margin-right: 0.6vw; }
+
+        /* --- Conclusion (three contributions + limitations) ------------- */
+        .slide-conclusion .content {
+            display: flex; flex-direction: column; justify-content: center; height: 100%;
+            padding: 3vh 4vw 7vh 4vw; gap: 2.4vh;
+        }
+        .cn-head .label {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; letter-spacing: 0.22em;
+            text-transform: uppercase; color: var(--accent); margin-bottom: 1.2vh;
+        }
+        .cn-headline {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.95vw;
+            line-height: 1.2; color: var(--text-primary);
+        }
+        .cn-headline em { font-style: italic; font-weight: 400; }
+        .cn-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.6vw; }
+        .cn-card {
+            padding: 1.8vh 1.4vw; background: var(--bg-secondary); border-left: 2px solid var(--text-primary);
+            display: flex; flex-direction: column; gap: 0.6vh;
+        }
+        .cn-num { font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.6rem; color: var(--accent); }
+        .cn-tag {
+            font-family: 'Inter', sans-serif; font-size: 0.72rem; letter-spacing: 0.2em;
+            text-transform: uppercase; color: var(--text-secondary);
+        }
+        .cn-card p {
+            font-family: 'Inter', sans-serif; font-size: 0.88rem; font-weight: 300; line-height: 1.5;
+            color: var(--text-primary); margin-top: 0.4vh;
+        }
+        .cn-card p .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; }
+        .cn-limits { padding-top: 1.4vh; border-top: 1px solid var(--text-primary); }
+        .cn-limits-label {
+            font-family: 'Inter', sans-serif; font-size: 0.78rem; letter-spacing: 0.2em;
+            text-transform: uppercase; color: var(--accent); margin-bottom: 1vh;
+        }
+        .cn-limits-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8vh 1.6vw; }
+        .cn-limit {
+            font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 300; line-height: 1.45;
+            color: var(--text-secondary); padding-left: 1vw; position: relative;
+        }
+        .cn-limit::before { content: '—'; position: absolute; left: 0; color: var(--accent); }
+        .cn-limit .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--text-primary); }
+
+        /* --- Future Work + Thanks --------------------------------------- */
+        .slide-future .content {
+            display: flex; flex-direction: column; justify-content: center; height: 100%;
+            padding: 3vh 4vw 7vh 4vw; gap: 2vh;
+        }
+        .fw-head .label {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; letter-spacing: 0.22em;
+            text-transform: uppercase; color: var(--accent); margin-bottom: 1.2vh;
+        }
+        .fw-headline {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.95vw;
+            line-height: 1.2; color: var(--text-primary);
+        }
+        .fw-headline em { font-style: italic; font-weight: 400; }
+        .fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4vh 2vw; }
+        .fw-item { display: flex; align-items: baseline; gap: 1vw; }
+        .fw-num {
+            font-family: 'Playfair Display', serif; font-style: italic; font-weight: 400;
+            font-size: 1.5rem; color: var(--accent); flex-shrink: 0; min-width: 1.6rem;
+        }
+        .fw-title {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1rem;
+            color: var(--text-primary); margin-bottom: 0.3vh;
+        }
+        .fw-most {
+            font-family: 'Inter', sans-serif; font-size: 0.68rem; letter-spacing: 0.1em;
+            text-transform: uppercase; color: var(--accent); margin-left: 0.6vw; font-weight: 600;
+        }
+        .fw-body p {
+            font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 300; line-height: 1.45;
+            color: var(--text-secondary);
+        }
+        .fw-body p .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--text-primary); }
+        /* --- Thank you (closing, Uni Stuttgart format) ----------------- */
+        .slide-thanks {
+            justify-content: center;
+            padding: 0;
+        }
+        .slide-thanks .ty-uni-logo {
+            position: absolute; top: 5vh; left: 4vw; height: 7vh; width: auto; opacity: 0.85;
+        }
+        .slide-thanks .ty-institute {
+            position: absolute; top: 14vh; left: 4vw;
+            font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500;
+            line-height: 1.3; color: var(--text-primary); letter-spacing: 0.02em;
+        }
+        .ty-body {
+            margin-left: 4vw; max-width: 60vw;
+        }
+        .ty-big {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 4.4vw;
+            line-height: 1.08; color: var(--text-primary); margin-bottom: 4vh;
+        }
+        .ty-big em { font-style: italic; font-weight: 400; }
+        .ty-contact { display: flex; flex-direction: column; gap: 0.8vh; padding-top: 2.4vh; border-top: 1px solid var(--line); max-width: 44vw; }
+        .ty-contact-row { font-family: 'Inter', sans-serif; font-size: 0.95rem; color: var(--text-primary); }
+        .ty-k {
+            display: inline-block; min-width: 6.5vw;
+            font-family: 'Inter', sans-serif; font-size: 0.7rem; letter-spacing: 0.16em;
+            text-transform: uppercase; color: var(--accent);
+        }
+        .slide-thanks .ty-ias-big {
+            position: absolute; right: 6vw; top: 50%; transform: translateY(-50%);
+            max-height: 20vh; max-width: 28vw; width: auto; height: auto;
+        }
+
+        /* --- S8 Fault injection on the real robot (demo) ---------------- */
+        .slide-faultinj .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 4vw 7vh 4vw;
+            gap: 2vh;
+        }
+        .fi-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .fi-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.95vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .fi-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .fi-video-wrap {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .fi-video {
+            max-width: 100%;
+            max-height: 60vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            background: var(--bg-secondary);
+        }
+        .fi-caption {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.2vh;
+            border-top: 1px solid var(--line);
+        }
+        .fi-caption .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+        }
+        .fi-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S4 Problem Formulation: MDP → POMDP ------------------------- */
+        .slide-formulation .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 5vw 7vh 5vw;
+            gap: 2.4vh;
+        }
+        .formulation-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.4vh;
+        }
+        .formulation-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 2vw;
+            line-height: 1.18;
+            color: var(--text-primary);
+            max-width: 88vw;
+        }
+        .formulation-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .formulation-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2.4vw;
+        }
+        .def-box {
+            padding: 2.4vh 2vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 1.4vh;
+        }
+        .def-box-warn {
+            border-left-color: #b8553e;
+        }
+        .def-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.5vw;
+            color: var(--text-primary);
+        }
+        .def-tuple {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4vw;
+            color: var(--accent);
+            letter-spacing: 0.04em;
+        }
+        .def-tuple em {
+            font-style: italic;
+        }
+        .def-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6vh;
+        }
+        .def-row {
+            display: grid;
+            grid-template-columns: 7vw 1fr;
+            gap: 0.8vw;
+            align-items: baseline;
+        }
+        .def-row .sym {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1rem;
+            color: var(--text-primary);
+        }
+        .def-row span:last-child {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.92rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+        }
+        .def-foot {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            line-height: 1.55;
+            color: var(--text-primary);
+            padding-top: 1vh;
+            border-top: 1px solid var(--line);
+        }
+        .def-foot em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .def-foot .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        .formulation-setting {
+            padding-top: 1.6vh;
+            border-top: 1px solid var(--line);
+        }
+        .setting-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.4vh;
+        }
+        .setting-equation {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.6rem;
+            color: var(--text-primary);
+            margin-bottom: 1.4vh;
+        }
+        .setting-equation .mono { font-family: inherit; }
+        .setting-body {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 300;
+            line-height: 1.55;
+            color: var(--text-secondary);
+        }
+        .setting-body em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .setting-body .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+
+        /* --- S6 Observation Design --------------------------------------- */
+        .slide-observation .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 5vw 7vh 5vw;
+            gap: 2.2vh;
+        }
+        .obs-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .obs-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.9vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+            margin-bottom: 0.6vh;
+        }
+        .obs-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .obs-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+        }
+        .obs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Inter', sans-serif;
+        }
+        .obs-table thead th {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            font-weight: 500;
+            color: var(--accent);
+            text-align: left;
+            padding: 1vh 1vw;
+            border-bottom: 1.5px solid var(--text-primary);
+        }
+        .obs-table thead th em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 0.95rem;
+            color: var(--text-primary);
+        }
+        .obs-table tbody td {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            font-weight: 400;
+            color: var(--text-primary);
+            padding: 1vh 1vw;
+            border-bottom: 1px solid var(--line);
+        }
+        .obs-table .td-dim {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.92rem;
+            color: var(--text-secondary);
+            width: 8vw;
+        }
+        .obs-table .sym {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+        }
+        .obs-table .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.92rem;
+        }
+        .obs-table .affected {
+            font-family: 'Inter', sans-serif;
+            font-weight: 500;
+            width: 12vw;
+        }
+        .obs-table .affected.yes { color: #b8553e; }
+        .obs-table .affected.no { color: var(--text-primary); }
+        .obs-table .relevance {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            width: 11vw;
+        }
+        .obs-table .note {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 300;
+            color: var(--accent);
+            font-style: italic;
+            margin-left: 0.4vw;
+        }
+        .obs-table .row-key td {
+            background: var(--bg-secondary);
+        }
+        .obs-table .row-key .td-dim {
+            color: var(--text-primary);
+            font-weight: 500;
+        }
+        .obs-table .row-mute td {
+            color: var(--text-secondary);
+            opacity: 0.85;
+        }
+        .obs-table .row-mute .relevance {
+            color: var(--accent);
+        }
+        .obs-table .row-spacer td {
+            border-bottom: none;
+            background: transparent;
+            padding: 0;
+            height: 4vh;
+        }
+
+        .obs-conclusion {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.8vw;
+            margin-top: 0.6vh;
+        }
+        .cc-block {
+            padding: 1.6vh 1.4vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--line);
+        }
+        .cc-block.cc-warn { border-left-color: #b8553e; }
+        .cc-block.cc-key { border-left-color: var(--text-primary); }
+        .cc-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.8vh;
+        }
+        .cc-warn .cc-label { color: #b8553e; }
+        .cc-body, .cc-note {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+        .cc-body em, .cc-note em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .cc-body .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+        }
+        .cc-eq {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.05rem;
+            color: var(--text-primary);
+            margin-bottom: 0.8vh;
+            font-weight: 500;
+        }
+        .cc-eq .mono { font-family: inherit; }
+
+        /* --- S14 Backup Policy & Supervisor FSM -------------------------- */
+        .slide-backup .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 4vw 7vh 4vw;
+            gap: 2.4vh;
+        }
+        .bk-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .bk-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.95vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .bk-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .bk-grid {
+            display: grid;
+            grid-template-columns: 1.1fr 1fr;
+            gap: 2vw;
+            align-items: stretch;
+        }
+        .bk-video {
+            display: flex;
+            flex-direction: column;
+            gap: 1vh;
+        }
+        .bk-video-box {
+            flex: 1;
+            aspect-ratio: 16 / 9;
+            background: var(--bg-secondary);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            overflow: hidden;
+            display: flex;
+        }
+        .bk-video-el {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .bk-text-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 1.6vh;
+        }
+        .bk-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.82rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            padding-bottom: 0.8vh;
+            border-bottom: 1px solid var(--line);
+            margin-bottom: 1.2vh;
+        }
+        .bk-training {
+            padding: 1.8vh 1.4vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+        }
+        .bk-training p {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            line-height: 1.55;
+            color: var(--text-primary);
+            margin-bottom: 1vh;
+        }
+        .bk-training p em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .bk-training p .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+        }
+        .bk-contrast {
+            padding: 1.8vh 1.4vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--accent);
+        }
+        .bk-contrast .bk-label { color: var(--text-primary); }
+        .bk-contrast p {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            line-height: 1.55;
+            color: var(--text-primary);
+            margin-bottom: 1vh;
+        }
+        .bk-contrast p em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .bk-contrast p .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.88rem;
+            color: var(--text-primary);
+        }
+
+        /* --- S17 Backup Policy · Real-Robot Deployment ------------------- */
+        .slide-backup-deploy .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 4vw 7vh 4vw;
+            gap: 2vh;
+        }
+        .bd-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .bd-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.95vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .bd-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .bd-video-wrap {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .bd-video {
+            max-width: 100%;
+            max-height: 56vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            background: var(--bg-secondary);
+        }
+        .bd-caption {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.2vh;
+            border-top: 1px solid var(--line);
+        }
+        .bd-caption .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        .bd-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S15 Hierarchical Supervisor FSM ----------------------------- */
+        .slide-supervisor .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 5vw 7vh 5vw;
+            gap: 3vh;
+        }
+        .sup-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .sup-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.95vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .sup-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .sup-fsm-wrap {
+            flex: 1 1 auto;
+            display: grid;
+            grid-template-columns: 1.5fr 1fr;
+            gap: 2.4vw;
+            align-items: center;
+            min-height: 0;
+        }
+        .sup-fsm-diagram {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .sup-fsm-diagram .fsm-svg {
+            width: 100%;
+            height: auto;
+        }
+        .sup-video {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8vh;
+        }
+        .sup-video-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+        .sup-video-box {
+            aspect-ratio: 16 / 9;
+            background: var(--bg-secondary);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1vh;
+        }
+        .sup-video-play {
+            font-size: 2.4rem;
+            color: var(--accent);
+        }
+        .sup-video-note {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-style: italic;
+            color: var(--text-secondary);
+        }
+        .sup-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 400;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.4vh;
+            border-top: 1px solid var(--text-primary);
+        }
+        .sup-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .sup-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+        .fsm-svg {
+            width: 100%;
+            height: auto;
+        }
+        .fsm-svg .fsm-state rect {
+            fill: var(--bg-primary);
+            stroke: var(--text-primary);
+            stroke-width: 1.5;
+        }
+        .fsm-svg .fsm-state-name {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 19px;
+            fill: var(--text-primary);
+        }
+        .fsm-svg .fsm-state-sub {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            font-weight: 300;
+            fill: var(--text-secondary);
+        }
+        .fsm-svg .fsm-arrow {
+            stroke: #5a5a5a;
+            stroke-width: 1.6;
+            fill: none;
+        }
+        .fsm-svg .fsm-cond {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 10.5px;
+            fill: var(--text-secondary);
+        }
+        .bk-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 400;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.4vh;
+            border-top: 1px solid var(--text-primary);
+        }
+        .bk-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .bk-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S13 Training Pipelines -------------------------------------- */
+        .slide-pipelines .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 2.4vh 4vw 6vh 4vw;
+            gap: 1.6vh;
+        }
+        .pl-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.8vh;
+        }
+        .pl-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.8vw;
+            line-height: 1.18;
+            color: var(--text-primary);
+        }
+        .pl-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .pl-row {
+            display: flex;
+            flex-direction: column;
+            gap: 1vh;
+        }
+        .pl-row-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.82rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            padding-bottom: 0.6vh;
+            border-bottom: 1px solid var(--line);
+        }
+        .pl-placeholder-note {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            text-transform: none;
+            letter-spacing: 0;
+            color: var(--text-light-3, #9aa0a8);
+            font-style: italic;
+            margin-left: 0.6vw;
+        }
+        .pl-fig-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .pl-fig {
+            max-width: 52vw;
+            max-height: 26vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+        }
+        .pl-fig-big {
+            max-width: 100%;
+            max-height: 56vh;
+        }
+        .pl-sim-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 2.4vw;
+            align-items: center;
+            flex: 1 1 auto;
+        }
+        .pl-sim-text {
+            display: flex;
+            flex-direction: column;
+            gap: 1.4vh;
+        }
+        .pl-steps {
+            list-style: none;
+            counter-reset: pl-step;
+            padding: 0;
+        }
+        .pl-steps li {
+            counter-increment: pl-step;
+            position: relative;
+            padding-left: 2.4vw;
+            margin-bottom: 1.2vh;
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            font-weight: 300;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+        .pl-steps li::before {
+            content: counter(pl-step);
+            position: absolute;
+            left: 0;
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.3rem;
+            color: var(--accent);
+        }
+        .pl-steps li strong {
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .pl-note {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 300;
+            font-style: italic;
+            line-height: 1.5;
+            color: var(--text-secondary);
+            padding-top: 1.2vh;
+            border-top: 1px solid var(--line);
+        }
+        .pl-real-grid-big {
+            flex: 1 1 auto;
+        }
+        .pl-real-fig-big {
+            max-height: 56vh;
+        }
+        .pl-real-fig-main {
+            flex: 1 1 auto;
+            min-height: 0;
+            margin-bottom: 1vh;
+        }
+        .pl-oneline {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.92rem;
+            font-weight: 300;
+            line-height: 1.5;
+            color: var(--text-primary);
+            text-align: center;
+            padding-top: 1vh;
+            border-top: 1px solid var(--line);
+        }
+        .pl-oneline .pl-ol-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.72rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-right: 0.8vw;
+        }
+        .pl-oneline .pl-ol-step {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .pl-oneline .pl-ol-loop {
+            color: var(--text-primary);
+        }
+        .pl-chain {
+            display: flex;
+            align-items: stretch;
+            gap: 1vw;
+        }
+        .pl-box {
+            flex: 1;
+            padding: 1.4vh 1.2vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            gap: 0.4vh;
+        }
+        .pl-box-loop {
+            border-left-color: var(--accent);
+        }
+        .pl-box-title {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: var(--text-primary);
+        }
+        .pl-box-desc {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 300;
+            line-height: 1.4;
+            color: var(--text-secondary);
+        }
+        .pl-arrow {
+            display: flex;
+            align-items: center;
+            font-family: 'Playfair Display', serif;
+            font-size: 1.6rem;
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+        .pl-arrow-down {
+            justify-content: center;
+        }
+        .pl-real-grid {
+            display: grid;
+            grid-template-columns: 0.9fr 1.1fr;
+            gap: 2vw;
+            align-items: center;
+        }
+        .pl-chain-vert {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.6vh;
+        }
+        .pl-real-fig-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .pl-real-fig {
+            max-width: 100%;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+        }
+        /* hero variant — must come AFTER .pl-real-fig to win */
+        .pl-real-fig.pl-real-fig-hero {
+            max-height: 68vh;
+        }
+
+        /* --- S22 HIL-SERL Negative Result ------------------------------- */
+        .slide-hilfail .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 2.4vh 4vw 6vh 4vw;
+            gap: 2vh;
+        }
+        .hf-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.8vh;
+        }
+        .hf-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.8vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .hf-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .hf-grid {
+            display: grid;
+            grid-template-columns: 1.15fr 1fr;
+            gap: 2.4vw;
+            align-items: start;
+        }
+        .hf-col {
+            display: flex;
+            flex-direction: column;
+            gap: 1.2vh;
+        }
+        .hf-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+            padding-bottom: 0.6vh;
+            border-bottom: 1px solid var(--line);
+        }
+        .hf-label-alt {
+            margin-top: 0.8vh;
+            color: #b8553e;
+        }
+        .hf-svg {
+            width: 100%;
+            max-height: 24vh;
+            height: auto;
+        }
+        .hf-axis { stroke: var(--text-primary); stroke-width: 1.2; }
+        .hf-tick { font-family: 'IBM Plex Mono', monospace; font-size: 10px; fill: var(--text-secondary); }
+        .hf-axis-title { font-family: 'Inter', sans-serif; font-size: 10px; fill: var(--text-secondary); }
+        .hf-band { fill: var(--bg-secondary); opacity: 0.6; }
+        .hf-band-label { font-family: 'Inter', sans-serif; font-size: 9px; fill: var(--accent); font-style: italic; }
+        .hf-line { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+        .hf-line-ok { stroke: var(--text-primary); stroke-width: 2.2; }
+        .hf-line-bad { stroke: #b8553e; stroke-width: 2.2; }
+        .hf-marker { stroke: #b8553e; stroke-width: 1.2; stroke-dasharray: 3 2; }
+        .hf-anno { font-family: 'Inter', sans-serif; font-size: 9.5px; fill: var(--text-primary); }
+        .hf-anno-warn { fill: #b8553e; font-weight: 500; }
+        .hf-body {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.92rem;
+            font-weight: 300;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+        .hf-body em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .hf-body .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        .hf-alts {
+            list-style: none;
+            padding: 0;
+        }
+        .hf-alts li {
+            padding-left: 1.2vw;
+            position: relative;
+            margin-bottom: 0.5vh;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+        }
+        .hf-alts li::before {
+            content: '—';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+        }
+        .hf-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.2vh;
+            border-top: 1px solid var(--text-primary);
+        }
+        .hf-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .hf-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S21 Backup Policy in Simulation ---------------------------- */
+        .slide-backup-sim .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 4vw 7vh 4vw;
+            gap: 2.4vh;
+        }
+        .bs-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .bs-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.9vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .bs-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .bs-grid {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr;
+            gap: 2.4vw;
+            align-items: stretch;
+        }
+        .bs-data {
+            display: flex;
+            flex-direction: column;
+            gap: 1.2vh;
+        }
+        .bs-data-label, .bs-sub-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+        .bs-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1vh 1.6vw;
+        }
+        .bs-stat {
+            display: flex;
+            flex-direction: column;
+            gap: 0.2vh;
+            padding: 0.8vh 1vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+        }
+        .bs-stat-val {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.5vw;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .bs-stat-key {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+        }
+        .bs-bars {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6vh;
+        }
+        .bs-grp { margin-bottom: 1vh; }
+        .bs-grp-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.82rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            margin-bottom: 0.6vh;
+            padding-bottom: 0.4vh;
+            border-bottom: 1px solid var(--line);
+        }
+        .bs-grp-good .bs-grp-label,
+        .bs-grp-label.bs-grp-good { }
+        .bs-grp-good { }
+        .bs-grp-param {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.74rem;
+            color: var(--text-light-3, #9aa0a8);
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .bs-grp-total {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 0.95rem;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+        .bs-grp-total.bad { color: #b8553e; }
+        .bs-grp-total.good { color: var(--text-primary); font-weight: 600; }
+        .bs-cmp-delta {
+            font-family: 'Inter', sans-serif;
+            font-style: normal;
+            font-size: 0.74rem;
+            color: var(--accent);
+            font-weight: 600;
+        }
+        .bs-grp-arrow {
+            text-align: center;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.82rem;
+            font-weight: 300;
+            color: var(--accent);
+            margin: 0.6vh 0;
+        }
+        .bs-grp-arrow .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-primary);
+        }
+        .bs-bar {
+            display: grid;
+            grid-template-columns: 8vw 1fr 6vw;
+            gap: 0.8vw;
+            align-items: center;
+            margin-bottom: 0.5vh;
+        }
+        .bs-bar-name {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            color: var(--text-primary);
+        }
+        .bs-bar-track {
+            height: 1vh;
+            background: var(--bg-secondary);
+            position: relative;
+        }
+        .bs-bar-fill {
+            position: absolute;
+            left: 0; top: 0; bottom: 0;
+            background: var(--text-primary);
+        }
+        .bs-bar-fill.bad { background: #b8553e; }
+        .bs-bar-val {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.82rem;
+            color: var(--text-secondary);
+            text-align: right;
+        }
+        .bs-modes {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.88rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+            padding-top: 0.8vh;
+            border-top: 1px solid var(--line);
+        }
+        .bs-modes .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.82rem;
+            color: var(--text-primary);
+        }
+        .bs-videos {
+            display: flex;
+            flex-direction: column;
+            gap: 1.4vh;
+        }
+        .bs-video {
+            display: flex;
+            flex-direction: column;
+            gap: 0.6vh;
+            flex: 1;
+        }
+        .bs-video-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+        .bs-video-box {
+            flex: 1;
+            aspect-ratio: 16 / 9;
+            background: var(--bg-secondary);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            overflow: hidden;
+            display: flex;
+        }
+        .bs-video-el {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .bs-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.2vh;
+            border-top: 1px solid var(--text-primary);
+        }
+        .bs-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .bs-conclusion .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+        .bs-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S20 Observation Ablation ----------------------------------- */
+        .slide-ablation .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 5vw 7vh 5vw;
+            gap: 3vh;
+        }
+        .abl-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .abl-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.95vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .abl-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .abl-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: 'Inter', sans-serif;
+        }
+        .abl-table thead th {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            font-weight: 500;
+            color: var(--accent);
+            text-align: left;
+            padding: 1.2vh 1vw;
+            border-bottom: 1.5px solid var(--text-primary);
+        }
+        .abl-table tbody td {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 400;
+            color: var(--text-primary);
+            padding: 1.6vh 1vw;
+            border-bottom: 1px solid var(--line);
+        }
+        .abl-table .abl-name {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.3rem;
+            color: var(--text-primary);
+            width: 11vw;
+        }
+        .abl-table .abl-dim {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+            width: 6vw;
+        }
+        .abl-table .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.92rem;
+        }
+        .abl-table .abl-result {
+            font-weight: 500;
+            width: 14vw;
+        }
+        .abl-table .abl-result.bad { color: #b8553e; }
+        .abl-table .abl-result.good { color: var(--text-primary); font-weight: 600; }
+        .abl-table tbody td em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .abl-table .abl-row-key td {
+            background: var(--bg-secondary);
+        }
+        .abl-table .abl-row-key .abl-name {
+            color: var(--text-primary);
+        }
+        .abl-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding-top: 1.4vh;
+            border-top: 1px solid var(--text-primary);
+        }
+        .abl-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .abl-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S19 H1 + H2/H3 (sim main result) --------------------------- */
+        .slide-h123 .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 2.4vh 4vw 6vh 4vw;
+            gap: 1vh;
+        }
+        .h123-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.8vh;
+        }
+        .h123-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.8vw;
+            line-height: 1.18;
+            color: var(--text-primary);
+        }
+        .h123-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .h123-main {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2vw;
+            align-items: center;
+        }
+        .h123-chart-wrap {
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            min-width: 0;
+        }
+        .h123-svg {
+            width: 100%;
+            max-height: 50vh;
+            height: auto;
+        }
+        .h123-video {
+            display: flex;
+            flex-direction: column;
+            gap: 0.8vh;
+        }
+        .h123-video-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--accent);
+        }
+        .h123-video-box {
+            aspect-ratio: 16 / 9;
+            background: var(--bg-secondary);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            overflow: hidden;
+            display: flex;
+        }
+        .h123-video-el {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
+        }
+        .h123-video-caption {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+        .h123-band {
+            fill: var(--bg-secondary);
+            opacity: 0.6;
+        }
+        .h123-band-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 11px;
+            fill: var(--accent);
+            font-style: italic;
+        }
+        .h123-grid {
+            stroke: var(--line);
+            stroke-width: 0.8;
+            stroke-dasharray: 2 3;
+        }
+        .h123-axis {
+            stroke: var(--text-primary);
+            stroke-width: 1.2;
+        }
+        .h123-tick {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 11px;
+            fill: var(--text-secondary);
+        }
+        .h123-axis-title {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            fill: var(--text-secondary);
+            letter-spacing: 0.04em;
+        }
+        .h123-line {
+            fill: none;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+        }
+        .h123-line-nobias { stroke: #b8553e; stroke-width: 2.2; }
+        .h123-line-fixed  { stroke: #8a8178; stroke-width: 2; stroke-dasharray: 5 4; }
+        .h123-line-random { stroke: var(--text-primary); stroke-width: 3; }
+        .h123-dots-nobias circle { fill: #b8553e; }
+        .h123-dots-fixed circle  { fill: var(--bg-primary); stroke: #8a8178; stroke-width: 1.6; }
+        .h123-dots-random circle { fill: var(--text-primary); }
+        .h123-anno {
+            font-family: 'Inter', sans-serif;
+            font-size: 11.5px;
+            fill: var(--text-primary);
+        }
+        .h123-anno-warn { fill: #b8553e; font-weight: 500; }
+        .h123-anno-leader { stroke: #b8553e; stroke-width: 1; stroke-dasharray: 2 2; }
+        .h123-legend-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            fill: var(--text-primary);
+        }
+        .h123-takeaways {
+            display: flex;
+            flex-direction: column;
+            gap: 0.9vh;
+            padding-top: 0.8vh;
+            border-top: 1px solid var(--line);
+        }
+        .h123-tk {
+            display: flex;
+            align-items: baseline;
+            gap: 0.8vw;
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            line-height: 1.45;
+            color: var(--text-primary);
+        }
+        .h123-tk em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .h123-tk-tag {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.2rem;
+            color: var(--accent);
+            flex-shrink: 0;
+            min-width: 2rem;
+        }
+
+        /* --- S12 Network Architecture ------------------------------------ */
+        .slide-network .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            height: 100%;
+            padding: 3vh 3vw 7vh 3vw;
+        }
+        .net-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.4vh;
+        }
+        .net-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.85vw;
+            line-height: 1.18;
+            color: var(--text-primary);
+            margin-bottom: 1vh;
+            max-width: 92vw;
+        }
+        .net-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .net-figure-wrap {
+            flex: 1 1 auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 0;
+        }
+        .net-figure {
+            max-width: 99vw;
+            max-height: 64vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+        }
+        .net-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.45;
+            text-align: center;
+            padding-top: 1vh;
+            margin-top: 1vh;
+            border-top: 1px solid var(--line);
+        }
+        .net-conclusion .net-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+        .net-conclusion .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-primary);
+        }
+
+        /* --- S10 Random-bias Training (Mechanism 2) ----------------------- */
+        .slide-random-bias .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 3vh 5vw 7vh 5vw;
+            gap: 2vh;
+        }
+        .rb-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.2vh;
+        }
+        .rb-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.95vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .rb-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+
+        .rb-protocol {
+            padding: 1.6vh 1.8vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+        }
+        .rb-protocol-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 0.8vh;
+        }
+        .rb-protocol-body p,
+        .rb-protocol-body ul {
+            font-family: 'Inter', sans-serif;
+            font-size: 1rem;
+            font-weight: 300;
+            line-height: 1.55;
+            color: var(--text-primary);
+        }
+        .rb-protocol-body p { margin-bottom: 0.4vh; }
+        .rb-eq {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.2rem;
+            color: var(--text-primary);
+            margin: 0.6vh 0 0.8vh 0;
+        }
+        .rb-eq .mono { font-family: inherit; }
+        .rb-bullets {
+            list-style: none;
+            padding: 0;
+        }
+        .rb-bullets li {
+            padding-left: 1.2vw;
+            position: relative;
+            margin-bottom: 0.4vh;
+            color: var(--text-secondary);
+        }
+        .rb-bullets li::before {
+            content: '—';
+            position: absolute;
+            left: 0;
+            color: var(--accent);
+        }
+        .rb-bullets li em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .rb-bullets li strong {
+            font-family: 'Inter', sans-serif;
+            font-weight: 600;
+            color: #b8553e;
+        }
+        .rb-bullets li .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.92rem;
+            color: var(--text-primary);
+        }
+
+        .rb-compare {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.6vw;
+        }
+        .rb-cmp-block {
+            padding: 1.6vh 1.4vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--line);
+        }
+        .rb-cmp-other { border-left-color: var(--accent); }
+        .rb-cmp-ours { border-left-color: var(--text-primary); }
+        .rb-cmp-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1vh;
+        }
+        .rb-cmp-ours .rb-cmp-label { color: var(--text-primary); }
+        .rb-cmp-row {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 300;
+            line-height: 1.5;
+            color: var(--text-primary);
+            margin-bottom: 0.6vh;
+        }
+        .rb-cmp-row em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .rb-cmp-goal {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 0.95rem;
+            color: var(--accent);
+            margin-top: 0.6vh;
+            padding-top: 0.6vh;
+            border-top: 1px solid var(--line);
+        }
+
+        .rb-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 400;
+            color: var(--text-primary);
+            text-align: center;
+            padding-top: 1.2vh;
+            border-top: 1px solid var(--text-primary);
+        }
+        .rb-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .rb-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.4rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+
+        /* --- S5 POMDP causal chain --------------------------------------- */
+        .slide-pomdp .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+            height: 100%;
+            padding: 3vh 3vw 7vh 3vw;
+        }
+        .pomdp-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.4vh;
+        }
+        .pomdp-headline {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 2vw;
+            line-height: 1.15;
+            color: var(--text-primary);
+            margin-bottom: 1.6vh;
+            max-width: 92vw;
+        }
+        .pomdp-headline em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .pomdp-figure-wrap {
+            flex: 1 1 auto;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 0;
+        }
+        .pomdp-figure {
+            max-width: 94vw;
+            max-height: 72vh;
+            width: auto;
+            height: auto;
+            object-fit: contain;
+            mix-blend-mode: multiply;
+        }
+        .pomdp-conclusion {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+            text-align: center;
+            padding: 1.2vh 0 0 0;
+            margin-top: 1vh;
+            border-top: 1px solid var(--line);
+        }
+        .pomdp-conclusion .conclusion-kicker {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.6rem;
+            color: var(--accent);
+            margin-right: 0.6vw;
+        }
+        .pomdp-conclusion .mono {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.05rem;
+            color: var(--text-primary);
+        }
+        .pomdp-conclusion em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .pomdp-conclusion .emph {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        /* --- S2 motivation ------------------------------------------------ */
+        .slide-motivation .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 4vh 4vw;
+        }
+        .motivation-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 4vh;
+        }
+        .motivation-grid {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 4vw;
+            align-items: center;
+        }
+        .motivation-hook {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 3.2vw;
+            line-height: 1.15;
+            color: var(--text-primary);
+            margin-bottom: 4vh;
+        }
+        .motivation-hook em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .motivation-body {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.2rem;
+            font-weight: 300;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 2.6vh;
+            max-width: 42vw;
+        }
+        .motivation-body .mono {
+            font-family: 'Inter', monospace;
+            font-size: 0.92rem;
+            color: var(--text-primary);
+        }
+        .motivation-body .emph {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .motivation-current {
+            border-top: 1px solid var(--line);
+            padding-top: 2.4vh;
+            margin-top: 1vh;
+        }
+        .motivation-claim {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-style: normal;
+            font-size: 1.9vw;
+            line-height: 1.3;
+            color: var(--text-primary);
+            margin-top: 2.4vh;
+            padding-top: 2.4vh;
+            border-top: 1px solid var(--text-primary);
+            max-width: 42vw;
+        }
+        .motivation-claim em {
+            font-style: italic;
+            font-weight: 400;
+        }
+        .motivation-figure {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .drift-svg {
+            width: 100%;
+            max-width: 38vw;
+            height: auto;
+        }
+        .drift-svg .svg-label {
+            font-family: 'Inter', sans-serif;
+            font-size: 13px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            fill: var(--accent);
+        }
+        .drift-svg .svg-ground {
+            stroke: var(--line);
+            stroke-width: 1.2;
+        }
+        .drift-svg .svg-link {
+            stroke: var(--text-primary);
+            stroke-width: 3;
+            stroke-linecap: round;
+        }
+        .drift-svg .svg-link-biased {
+            stroke: var(--text-secondary);
+            stroke-width: 3;
+            stroke-linecap: round;
+            stroke-dasharray: 4 3;
+        }
+        .drift-svg .svg-joint {
+            fill: var(--bg-primary);
+            stroke: var(--text-primary);
+            stroke-width: 1.6;
+        }
+        .drift-svg .svg-joint-base {
+            fill: var(--text-primary);
+        }
+        .drift-svg .svg-ee-target {
+            fill: var(--text-primary);
+        }
+        .drift-svg .svg-ee-actual {
+            fill: #b8553e;
+        }
+        .drift-svg .svg-ee-ghost {
+            fill: none;
+            stroke: var(--line);
+            stroke-width: 1.4;
+            stroke-dasharray: 3 2;
+        }
+        .drift-svg .svg-drift-arrow {
+            stroke: #b8553e;
+            stroke-width: 2;
+            fill: none;
+        }
+        .drift-svg .svg-anno {
+            font-family: 'Inter', sans-serif;
+            font-size: 12px;
+            fill: var(--text-secondary);
+        }
+        .drift-svg .svg-anno-warn {
+            fill: #b8553e;
+            font-weight: 500;
+        }
+        .drift-svg .svg-bias-arc {
+            stroke: #b8553e;
+            stroke-width: 1.6;
+            fill: none;
+        }
+
+        /* --- slide-head shared (S6 / S13) -------------------------------- */
+        .slide-head {
+            margin-bottom: 3.2vh;
+            max-width: 90vw;
+        }
+        .slide-head .label {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 0.22em;
+            text-transform: uppercase;
+            color: var(--accent);
+            margin-bottom: 1.4vh;
+        }
+        .slide-head h2 {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 2.1vw;
+            line-height: 1.2;
+            color: var(--text-primary);
+        }
+        .slide-head h2 em {
+            font-style: italic;
+            font-weight: 400;
+        }
+
+        /* --- S6 framework 2x2 grid --------------------------------------- */
+        .slide-frame .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 0 2vw;
+        }
+        .frame-grid {
+            display: grid;
+            grid-template-columns: 11vw 1fr 1fr;
+            grid-template-rows: auto auto auto;
+            gap: 2vh 2vw;
+            margin-bottom: 3vh;
+        }
+        .frame-cell-blank { background: transparent; }
+        .frame-col-head {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent);
+            padding-bottom: 1.2vh;
+            border-bottom: 1px solid var(--line);
+        }
+        .frame-row-head {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.6vw;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 1.2vw;
+            border-right: 1px solid var(--line);
+        }
+        .frame-cell {
+            padding: 3vh 2vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+        }
+        .frame-cell-method {
+            font-family: 'Playfair Display', serif;
+            font-weight: 600;
+            font-size: 1.9vw;
+            color: var(--text-primary);
+            margin-bottom: 0.8vh;
+        }
+        .frame-cell-desc {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.05rem;
+            font-weight: 300;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+        .frame-supervisor {
+            display: flex;
+            align-items: center;
+            gap: 1.4vw;
+            padding: 2vh 2vw;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
+            font-family: 'Inter', sans-serif;
+            font-size: 1.15rem;
+            color: var(--text-primary);
+            margin-bottom: 1.4vh;
+        }
+        .frame-supervisor .frame-kicker {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.78rem;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--accent);
+            flex-shrink: 0;
+        }
+        .frame-supervisor em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            color: var(--text-primary);
+        }
+        .frame-axis {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.85rem;
+            letter-spacing: 0.1em;
+            color: var(--accent);
+            font-style: italic;
+        }
+
+        /* --- S13 matrix + demo grid + observations ----------------------- */
+        .slide-matrix .content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            height: 100%;
+            padding: 0 2vw;
+        }
+        .matrix-wrap {
+            display: grid;
+            grid-template-columns: 1.7fr 1fr;
+            gap: 1.8vw;
+            margin-bottom: 2.4vh;
+        }
+        .matrix-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        .matrix-table thead th {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.7rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            font-weight: 400;
+            color: var(--text-secondary);
+            padding: 0.8vh 0.6vw;
+            border-bottom: 1px solid var(--line);
+            text-align: center;
+        }
+        .matrix-table thead .th-group {
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--text-primary);
+        }
+        .matrix-table thead .th-group em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            text-transform: none;
+            letter-spacing: 0;
+            font-size: 0.95rem;
+            font-weight: 400;
+        }
+        .matrix-table thead .th-sub {
+            font-size: 0.66rem;
+        }
+        .matrix-table thead .th-task {
+            text-align: left;
+            font-size: 0.78rem;
+        }
+        .matrix-table thead .th-meta {
+            display: block;
+            font-size: 0.6rem;
+            color: var(--accent);
+            margin-top: 0.3vh;
+            font-weight: 300;
+        }
+        .matrix-table tbody td {
+            font-family: 'Inter', sans-serif;
+            font-size: 1.2vw;
+            font-weight: 400;
+            padding: 1.4vh 0.6vw;
+            text-align: center;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+        .matrix-table tbody .td-task {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1vw;
+            text-align: left;
+            color: var(--text-secondary);
+            font-weight: 400;
+        }
+        .matrix-table tbody .td-bad {
+            color: #b8553e;
+            font-weight: 500;
+        }
+        .matrix-table tbody .td-good {
+            color: var(--text-primary);
+            font-weight: 600;
+        }
+
+        .matrix-demos {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.8vh 0.6vw;
+            align-content: start;
+        }
+        .demo-col-head {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.66rem;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            text-align: center;
+            padding-bottom: 0.6vh;
+            border-bottom: 1px solid var(--line);
+        }
+        .demo-thumb {
+            aspect-ratio: 16 / 10;
+            background: var(--bg-secondary);
+            border: 1px solid var(--line);
+            position: relative;
+            padding: 0.6vh 0.6vw;
+        }
+        .demo-thumb.bad { border-left: 2px solid #b8553e; }
+        .demo-thumb.good { border-left: 2px solid var(--text-primary); }
+        .demo-task {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.62rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+        .demo-play {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-family: 'Inter', sans-serif;
+            font-size: 1.4rem;
+            color: var(--accent);
+        }
+
+        .matrix-obs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1vh 1.6vw;
+            padding-top: 1.4vh;
+            border-top: 1px solid var(--line);
+        }
+        .obs-item {
+            display: flex;
+            align-items: baseline;
+            gap: 0.8vw;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.86rem;
+            font-weight: 300;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+        .obs-num {
+            font-family: 'Playfair Display', serif;
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            flex-shrink: 0;
+        }
+        .obs-item em {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-weight: 400;
+            color: var(--text-primary);
+        }
+    </style>
+</head>
+<body>
+    <div class="presentation">
+        <!-- ═══════ SLIDE 1 · COVER (S1) ═════════════════════════════════════ -->
+        <div class="slide slide-title active">
+            <img class="uni-logo" src="../../assets/logos/uni-stuttgart.png" alt="University of Stuttgart"/>
+            <div class="institute-name">Institute of Industrial Automation<br/>and Software Engineering</div>
+            <div class="content cover-content">
+                <div class="label">Master Thesis</div>
+                <h1 class="cover-title">Hierarchical Imitation and Reinforcement Learning<br/>for <em>Fault-Tolerant</em> Manipulation</h1>
+                <div class="cover-meta">
+                    <span class="meta-item"><span class="meta-key">Author</span> Cheng Cheng</span>
+                    <span class="meta-item"><span class="meta-key">Supervisor</span> Prof. Andrey Morozov</span>
+                    <span class="meta-item"><span class="meta-key">Date</span> May 18, 2026</span>
+                </div>
+            </div>
+            <img class="ias-sublogo" src="../../assets/logos/ias-sublogo.jpeg" alt="IAS"/>
+        </div>
+
+        <!-- ═══════ SLIDE 2 · AGENDA (S2) ════════════════════════════════════ -->
+        <div class="slide slide-agenda-new">
+            <div class="content">
+                <div class="label">§ Outline</div>
+                <h2>What this defense <em>covers</em></h2>
+                <ul class="agenda-list">
+                    <li>
+                        <span class="agenda-num">I</span>
+                        <div>
+                            <span class="agenda-text">Motivation</span>
+                            <span class="agenda-sub">Why encoder bias matters · the industrial pain point</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="agenda-num">II</span>
+                        <div>
+                            <span class="agenda-text">POMDP Formulation</span>
+                            <span class="agenda-sub">MDP &rarr; POMDP under encoder bias · one-source, three-effect cascade</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="agenda-num">III</span>
+                        <div>
+                            <span class="agenda-text">Method &amp; Framework</span>
+                            <span class="agenda-sub">task &oplus; backup &times; sim/real · HG-DAgger · supervisor FSM</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="agenda-num">IV</span>
+                        <div>
+                            <span class="agenda-text">Simulation Results</span>
+                            <span class="agenda-sub">H1/H2/H3 + HIL-SERL negative result</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="agenda-num">V</span>
+                        <div>
+                            <span class="agenda-text">Real-Robot Results</span>
+                            <span class="agenda-sub">4-column train&times;test bias matrix · HG-DAgger convergence</span>
+                        </div>
+                    </li>
+                    <li>
+                        <span class="agenda-num">VI</span>
+                        <div>
+                            <span class="agenda-text">Conclusion &amp; Future Work</span>
+                            <span class="agenda-sub">limitations · two-step ablation as next step</span>
+                        </div>
+                    </li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- ═══════ DIVIDER · § 1 MOTIVATION ════════════════════════════════ -->
+        <div class="slide slide-divider">
+            <div class="divider-content">
+                <div class="divider-num">&sect;&nbsp;1</div>
+                <div class="divider-rule"></div>
+                <div class="divider-name">Motivation</div>
+                <div class="divider-sub">Why encoder bias matters &middot; the industrial pain point</div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 4 · MOTIVATION (S3) ════════════════════════════════ -->
+        <div class="slide slide-motivation">
+            <div class="content motivation-content">
+                <div class="motivation-head">
+                    <div class="label">§ 1 · Motivation</div>
+                </div>
+                <div class="motivation-grid">
+                    <div class="motivation-text">
+                        <h2 class="motivation-hook">0.1&nbsp;rad of encoder drift<br/><em>breaks the assembly task.</em></h2>
+                        <p class="motivation-body">A 0.1&nbsp;rad (~5.7°) calibration offset shifts the end-effector pose by <span class="emph">~6.5&nbsp;cm</span> — and up to <span class="emph">~19&nbsp;cm</span> under severe bias (0.3&nbsp;rad). Far beyond the tolerance of any precision manipulation task.</p>
+                        <p class="motivation-body motivation-current">Current industrial practice: <span class="emph">halt the line, recalibrate</span> — throughput cost is non-trivial.</p>
+                        <p class="motivation-claim">We adapt <em>online</em> — no production halt required.</p>
+                    </div>
+                    <div class="motivation-figure">
+                        <svg viewBox="0 0 400 380" xmlns="http://www.w3.org/2000/svg" class="drift-svg">
+                            <!-- Two arms side by side, top labels -->
+                            <text x="100" y="22" text-anchor="middle" class="svg-label">ideal</text>
+                            <text x="300" y="22" text-anchor="middle" class="svg-label">bias-injected</text>
+
+                            <!-- Ground line baselines -->
+                            <line x1="40" y1="320" x2="160" y2="320" class="svg-ground"/>
+                            <line x1="240" y1="320" x2="360" y2="320" class="svg-ground"/>
+
+                            <!-- LEFT arm: ideal, J1 vertical -->
+                            <!-- base -->
+                            <circle cx="100" cy="320" r="6" class="svg-joint-base"/>
+                            <!-- link1 (vertical) -->
+                            <line x1="100" y1="320" x2="100" y2="220" class="svg-link"/>
+                            <circle cx="100" cy="220" r="5" class="svg-joint"/>
+                            <!-- link2 (up-left) -->
+                            <line x1="100" y1="220" x2="70" y2="150" class="svg-link"/>
+                            <circle cx="70" cy="150" r="5" class="svg-joint"/>
+                            <!-- link3 (up-right) -->
+                            <line x1="70" y1="150" x2="115" y2="95" class="svg-link"/>
+                            <circle cx="115" cy="95" r="5" class="svg-joint"/>
+                            <!-- end-effector -->
+                            <circle cx="115" cy="95" r="9" class="svg-ee-target"/>
+                            <text x="135" y="92" class="svg-anno">target ✓</text>
+
+                            <!-- RIGHT arm: biased, J1 rotated by ~0.1 rad clockwise -->
+                            <!-- base -->
+                            <circle cx="300" cy="320" r="6" class="svg-joint-base"/>
+                            <!-- link1 tilted -->
+                            <line x1="300" y1="320" x2="310" y2="221" class="svg-link-biased"/>
+                            <circle cx="310" cy="221" r="5" class="svg-joint"/>
+                            <!-- link2 (shifted) -->
+                            <line x1="310" y1="221" x2="282" y2="150" class="svg-link-biased"/>
+                            <circle cx="282" cy="150" r="5" class="svg-joint"/>
+                            <!-- link3 (shifted) -->
+                            <line x1="282" y1="150" x2="330" y2="98" class="svg-link-biased"/>
+                            <circle cx="330" cy="98" r="5" class="svg-joint"/>
+                            <!-- actual EE (shifted) -->
+                            <circle cx="330" cy="98" r="9" class="svg-ee-actual"/>
+                            <!-- ghost target (where it should have been) -->
+                            <circle cx="315" cy="95" r="9" class="svg-ee-ghost"/>
+                            <!-- drift arrow -->
+                            <line x1="315" y1="95" x2="328" y2="98" class="svg-drift-arrow" marker-end="url(#arrow)"/>
+                            <text x="345" y="115" class="svg-anno svg-anno-warn">~6.5 cm drift</text>
+
+                            <!-- J1 bias arc annotation -->
+                            <path d="M 285 320 A 15 15 0 0 1 300 305" class="svg-bias-arc"/>
+                            <text x="265" y="345" class="svg-anno svg-anno-warn">J1: +0.1 rad</text>
+
+                            <defs>
+                                <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+                                    <path d="M 0 0 L 10 5 L 0 10 z" fill="#b8553e"/>
+                                </marker>
+                            </defs>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 5 · ENCODER BIAS ON THE REAL ROBOT (demo) ═══════ -->
+        <div class="slide slide-faultinj">
+            <div class="content">
+                <div class="fi-head">
+                    <div class="label">§ 1 · Motivation · Encoder Bias on the Real Robot</div>
+                    <h2 class="fi-headline">Inject the bias on the real robot &mdash; <em>the end-effector drifts</em></h2>
+                </div>
+                <div class="fi-video-wrap">
+                    <video class="fi-video" src="../../../videos/randombias_faultinjection.mp4" controls loop muted playsinline></video>
+                </div>
+                <div class="fi-caption">
+                    <span class="fi-kicker">&middot;</span>
+                    Random J1 encoder bias <span class="mono">b ~ U[&minus;0.2, 0.2] rad</span> injected via the B+D dual-injection points. The TCP drifts away from where the controller thinks it is &mdash; this is the few-centimeter drift, live on real hardware. The rest of the talk is about adapting to it without halting.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ DIVIDER · § 2 POMDP FORMULATION ═════════════════════════ -->
+        <div class="slide slide-divider">
+            <div class="divider-content">
+                <div class="divider-num">&sect;&nbsp;2</div>
+                <div class="divider-rule"></div>
+                <div class="divider-name">POMDP Formulation</div>
+                <div class="divider-sub">MDP &rarr; POMDP under encoder bias &middot; one-source, three-effect cascade</div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 6 · PROBLEM FORMULATION (S4) ══════════════════════ -->
+        <div class="slide slide-formulation">
+            <div class="content">
+                <div class="formulation-head">
+                    <div class="label">§ 2 · Problem Formulation</div>
+                    <h2 class="formulation-headline">From MDP to POMDP — encoder bias as a <em>hidden variable</em></h2>
+                </div>
+                <div class="formulation-grid">
+                    <div class="def-box">
+                        <div class="def-title">Standard MDP</div>
+                        <div class="def-tuple">⟨ <em>S, A, P, R, γ</em> ⟩</div>
+                        <div class="def-list">
+                            <div class="def-row"><span class="sym">S</span><span>state space</span></div>
+                            <div class="def-row"><span class="sym">A</span><span>action space</span></div>
+                            <div class="def-row"><span class="sym">P(s′|s,a)</span><span>transition</span></div>
+                            <div class="def-row"><span class="sym">R(s,a)</span><span>reward</span></div>
+                            <div class="def-row"><span class="sym">γ</span><span>discount</span></div>
+                        </div>
+                        <div class="def-foot">Agent observes <em>s</em> directly.<br/>Policy <span class="mono">π : S → A</span>.</div>
+                    </div>
+                    <div class="def-box def-box-warn">
+                        <div class="def-title">POMDP</div>
+                        <div class="def-tuple">⟨ <em>S, A, P, R, Ω, O, γ</em> ⟩</div>
+                        <div class="def-list">
+                            <div class="def-row"><span class="sym">Ω</span><span>observation space</span></div>
+                            <div class="def-row"><span class="sym">O(o|s)</span><span>observation function</span></div>
+                        </div>
+                        <div class="def-foot">Agent sees <em>o</em>, not <em>s</em>. Hidden variable confounds <span class="mono">s → o</span>.<br/>Policy <span class="mono">π : Ω → A</span> &nbsp; or &nbsp; <span class="mono">π : B(s) → A</span>.</div>
+                    </div>
+                </div>
+                <div class="formulation-setting">
+                    <div class="setting-label">Our setting</div>
+                    <div class="setting-equation"><span class="mono">q<sub>meas</sub> = q<sub>true</sub> + b</span>, &nbsp; <span class="mono">b ∈ ℝ<sup>7</sup></span> hidden</div>
+                    <div class="setting-body">The agent never accesses <span class="mono">q<sub>true</sub></span> directly. <em>b</em> is the unobservable confound — exactly the POMDP definition.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 5 · POMDP CAUSAL CHAIN (S5) ═══════════════════════ -->
+        <div class="slide slide-pomdp">
+            <div class="content">
+                <div class="pomdp-head">
+                    <div class="label">§ 2 · Problem Formulation</div>
+                    <h2 class="pomdp-headline">One bias source — <em>three independent effects</em> on the MDP</h2>
+                </div>
+                <div class="pomdp-figure-wrap">
+                    <img class="pomdp-figure" src="../../assets/figures/fig_3_2_causal_chain_cropped.png" alt="Causal chain"/>
+                </div>
+                <div class="pomdp-conclusion">
+                    <span class="conclusion-kicker">⇒</span>
+                    All three observation channels read <span class="mono">q + b</span>. The agent <em>never observes b directly</em> — <span class="emph">MDP degrades to POMDP</span>.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ DIVIDER · § 3 METHOD & FRAMEWORK ════════════════════════ -->
+        <div class="slide slide-divider">
+            <div class="divider-content">
+                <div class="divider-num">&sect;&nbsp;3</div>
+                <div class="divider-rule"></div>
+                <div class="divider-name">Method &amp; Framework</div>
+                <div class="divider-sub">task &oplus; backup &times; sim/real &middot; HG-DAgger &middot; supervisor FSM</div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 9 · OBSERVATION DESIGN (S6) ═══════════════════════ -->
+        <div class="slide slide-observation">
+            <div class="content">
+                <div class="obs-head">
+                    <div class="label">§ 3 · Method · Mechanism 1 &middot; Observation Augmentation</div>
+                    <h2 class="obs-headline">Which observation channels carry information about <em>b</em>?</h2>
+                    <p class="obs-sub">25D observation space (sim), split by bias contamination &amp; task relevance.</p>
+                </div>
+                <table class="obs-table">
+                    <thead>
+                        <tr>
+                            <th class="th-dim">Dim</th>
+                            <th class="th-content">Content</th>
+                            <th class="th-source">Source</th>
+                            <th class="th-affected">Affected by <em>b</em>?</th>
+                            <th class="th-relevance">Task relevance</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="td-dim">0&ndash;6</td>
+                            <td>Joint angles <span class="mono">q + b</span></td>
+                            <td>Encoder reading</td>
+                            <td class="affected yes">&#10007; YES</td>
+                            <td class="relevance">indirect</td>
+                        </tr>
+                        <tr>
+                            <td class="td-dim">7&ndash;13</td>
+                            <td>Joint velocity <span class="sym">q&#775;</span></td>
+                            <td>Encoder derivative</td>
+                            <td class="affected no">&#10003; no</td>
+                            <td class="relevance">structural</td>
+                        </tr>
+                        <tr>
+                            <td class="td-dim">14</td>
+                            <td>Gripper <span class="sym">g</span></td>
+                            <td>Control command</td>
+                            <td class="affected no">&#10003; no</td>
+                            <td class="relevance">structural</td>
+                        </tr>
+                        <tr>
+                            <td class="td-dim">15&ndash;17</td>
+                            <td>TCP position <span class="mono">FK(q+b)</span></td>
+                            <td>Biased forward kinematics</td>
+                            <td class="affected yes">&#10007; YES</td>
+                            <td class="relevance">direct</td>
+                        </tr>
+                        <tr class="row-key">
+                            <td class="td-dim">18&ndash;20 &#9733;</td>
+                            <td>Real TCP <span class="mono">o<sub>real</sub></span></td>
+                            <td>External sensor + 5mm <span class="sym">&epsilon;</span></td>
+                            <td class="affected no">&#10003; no <span class="note">(key!)</span></td>
+                            <td class="relevance">direct</td>
+                        </tr>
+                        <tr class="row-spacer"><td colspan="5"></td></tr>
+                        <tr class="row-mute">
+                            <td class="td-dim">21</td>
+                            <td>Hand active <span class="mono">h<sub>act</sub></span></td>
+                            <td>Vision detection</td>
+                            <td class="affected no">&#10003; no</td>
+                            <td class="relevance">runtime safety</td>
+                        </tr>
+                        <tr class="row-mute">
+                            <td class="td-dim">22&ndash;24</td>
+                            <td>Hand position <span class="mono">p<sub>hand</sub></span></td>
+                            <td>Vision + depth (D455)</td>
+                            <td class="affected no">&#10003; no</td>
+                            <td class="relevance">runtime safety</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div class="obs-conclusion">
+                    <div class="cc-block cc-warn">
+                        <div class="cc-label">Without Real TCP</div>
+                        <p class="cc-body">Agent cannot distinguish <span class="mono">(q, b)</span> from <span class="mono">(q &minus; &delta;, b + &delta;)</span>. The optimal policy degenerates into <em>average compensation</em> over the bias distribution &mdash; hedging across all <em>b</em> but mastering no specific <em>b</em>.</p>
+                    </div>
+                    <div class="cc-block cc-key">
+                        <div class="cc-label">With Real TCP &middot; disambiguating signal</div>
+                        <p class="cc-eq"><span class="mono">&Delta;x &nbsp;=&nbsp; FK(q<sub>true</sub>) &nbsp;&minus;&nbsp; FK(q + b) &nbsp;&asymp;&nbsp; f(b)</span></p>
+                        <p class="cc-note">lets the policy infer <em>b</em> implicitly from a single-step observation.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 10 · RANDOM-BIAS TRAINING (Mechanism 2) ═══════════ -->
+        <div class="slide slide-random-bias">
+            <div class="content">
+                <div class="rb-head">
+                    <div class="label">§ 3 · Method · Mechanism 2 &middot; Random-Bias Training</div>
+                    <h2 class="rb-headline">Sample <em>b</em> at every episode &mdash; let the policy <em>condition</em> on it</h2>
+                </div>
+
+                <div class="rb-protocol">
+                    <div class="rb-protocol-label">Training protocol</div>
+                    <div class="rb-protocol-body">
+                        <p>At every episode reset:</p>
+                        <div class="rb-eq"><span class="mono">b<sub>i</sub> &nbsp;&sim;&nbsp; &Uscr;[ 0, b<sub>max</sub> ]</span>, &nbsp; for &nbsp;<span class="mono">i = 1, &hellip;, 7</span></div>
+                        <ul class="rb-bullets">
+                            <li><em>b</em> held constant within an episode.</li>
+                            <li><span class="mono">b<sub>max</sub> = 0.25 rad &nbsp;(&approx; 14&deg;)</span> &mdash; larger than the bias magnitudes surveyed for industrial robots; a deliberately aggressive stress test.</li>
+                            <li><em>b</em> is <strong>NOT</strong> fed to the policy as input &mdash; the policy must infer it implicitly from the 25D observation.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="rb-compare">
+                    <div class="rb-cmp-block rb-cmp-other">
+                        <div class="rb-cmp-label">Domain Randomization (Tobin et al.)</div>
+                        <p class="rb-cmp-row">Randomizes visual textures &mdash; <em>redundant</em> nuisance variables.</p>
+                        <p class="rb-cmp-row">Policy should be <em>invariant</em> to the randomization.</p>
+                        <p class="rb-cmp-goal">Goal: learn invariance.</p>
+                    </div>
+                    <div class="rb-cmp-block rb-cmp-ours">
+                        <div class="rb-cmp-label">Our Random-Bias Training</div>
+                        <p class="rb-cmp-row">Randomizes <em>b</em> &mdash; a hidden confound the policy <em>must</em> condition on.</p>
+                        <p class="rb-cmp-row">Policy must output <em>different</em> actions for different <em>b</em>.</p>
+                        <p class="rb-cmp-goal">Goal: implicit identification &amp; condition.</p>
+                    </div>
+                </div>
+
+                <div class="rb-conclusion">
+                    <span class="rb-kicker">&rArr;</span>
+                    Optimization target: <em>expected return over the b distribution</em>, not worst-case (robust MDP).
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 11 · FRAMEWORK OVERVIEW ═══════════════════════════ -->
+        <div class="slide slide-frame">
+            <div class="content">
+                <div class="slide-head">
+                    <div class="label">§ Method · Overall Framework</div>
+                    <h2>task &oplus; backup policies &times; <em>sim / real</em> dual-path</h2>
+                </div>
+                <div class="frame-grid">
+                    <div class="frame-cell-blank"></div>
+                    <div class="frame-col-head">Simulation</div>
+                    <div class="frame-col-head">Real Robot</div>
+
+                    <div class="frame-row-head">Task<br/>Policy</div>
+                    <div class="frame-cell">
+                        <div class="frame-cell-method">HIL-SERL</div>
+                        <div class="frame-cell-desc">BC warmup &rarr; SAC online + human intervention</div>
+                    </div>
+                    <div class="frame-cell">
+                        <div class="frame-cell-method">BC + HG-DAgger</div>
+                        <div class="frame-cell-desc">collect &rarr; BC &rarr; iterative intervention loop</div>
+                    </div>
+
+                    <div class="frame-row-head">Backup<br/>Policy</div>
+                    <div class="frame-cell">
+                        <div class="frame-cell-method">SAC + DR</div>
+                        <div class="frame-cell-desc">sim-only training with domain randomization</div>
+                    </div>
+                    <div class="frame-cell">
+                        <div class="frame-cell-method">Zero-shot</div>
+                        <div class="frame-cell-desc">direct transfer to real robot, no retraining</div>
+                    </div>
+                </div>
+                <div class="frame-supervisor">
+                    <span class="frame-kicker">Runtime</span>
+                    Hierarchical Supervisor — TASK / BACKUP / HOMING <em>three-state FSM</em>, hard switch between task &amp; backup
+                </div>
+                <p class="frame-axis">Paradigm choice determined by (observation modality &times; data scale &times; safety) three-axis decision</p>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 12 · NETWORK ARCHITECTURE ═════════════════════════ -->
+        <div class="slide slide-network">
+            <div class="content">
+                <div class="net-head">
+                    <div class="label">§ 3 · Method · Network Architecture</div>
+                    <h2 class="net-headline">One network &mdash; shared by <em>task and backup policies</em>, sim and real</h2>
+                </div>
+                <div class="net-figure-wrap">
+                    <img class="net-figure" src="../../assets/figures/fig_4_2_network_en.png" alt="Network architecture"/>
+                </div>
+                <div class="net-conclusion">
+                    <span class="net-kicker">&middot;</span>
+                    Frozen <span class="mono">DINOv3-S</span> backbone (22M params) &middot; 768D shared feature &middot; continuous actor + twin critic + discrete gripper critic. Both <em>task</em> and <em>backup</em> policies use this architecture; real-robot BC trains the actor only.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 13 · TASK POLICY · SIMULATION (HIL-SERL) ══════════ -->
+        <div class="slide slide-pipelines">
+            <div class="content">
+                <div class="pl-head">
+                    <div class="label">§ 3 · Method · Task Policy &middot; Simulation</div>
+                    <h2 class="pl-headline">Task policy in simulation &mdash; <em>HIL-SERL (RLPD)</em></h2>
+                </div>
+                <div class="pl-sim-grid">
+                    <div class="pl-fig-wrap">
+                        <img class="pl-fig pl-fig-big" src="../../assets/figures/fig_5_1_hilserl_cropped.png" alt="HIL-SERL architecture"/>
+                    </div>
+                    <div class="pl-sim-text">
+                        <div class="pl-row-label">Pipeline</div>
+                        <ol class="pl-steps">
+                            <li><strong>50 human demos</strong> &rarr; offline demo buffer</li>
+                            <li><strong>BC warmup</strong> &mdash; 500 steps, offline-only</li>
+                            <li><strong>SAC online (RLPD)</strong> &mdash; replay mix 50% offline + 50% online</li>
+                            <li><strong>Human keyboard intervention</strong> during online collection</li>
+                            <li>successful interventions &rarr; appended back to the offline buffer</li>
+                        </ol>
+                        <p class="pl-note">Why simulation allows this: rollouts are cheap, throughput is high, and HIL intervention compensates for the sparse reward &mdash; online RL converges. The real robot cannot (see &sect; 4 negative result).</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 14 · TASK POLICY · REAL ROBOT (BC + HG-DAgger) ════ -->
+        <div class="slide slide-pipelines">
+            <div class="content">
+                <div class="pl-head">
+                    <div class="label">§ 3 · Method · Task Policy &middot; Real Robot</div>
+                    <h2 class="pl-headline">Task policy on the real robot &mdash; <em>BC + HG-DAgger</em></h2>
+                </div>
+                <div class="pl-real-fig-wrap pl-real-fig-main">
+                    <img class="pl-real-fig pl-real-fig-hero" src="../../assets/figures/fig_6_4_dagger_en.png" alt="HG-DAgger iteration cycle"/>
+                </div>
+                <div class="pl-oneline">
+                    <span class="pl-ol-label">Pipeline:</span>
+                    <span class="pl-ol-step">Collect human demos</span> &rarr; <span class="pl-ol-step">BC train (actor only)</span> &rarr; <span class="pl-ol-step pl-ol-loop">HG-DAgger iterations &mdash; rollout &rarr; human takes over &rarr; add to buffer &rarr; retrain &rarr; repeat</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 14 · BACKUP POLICY · SIM-ONLY TRAINING ════════════ -->
+        <div class="slide slide-backup">
+            <div class="content">
+                <div class="bk-head">
+                    <div class="label">§ 3 · Method · Backup Policy &middot; Sim-only Training</div>
+                    <h2 class="bk-headline">Backup collision-avoidance &mdash; <em>trained only in simulation</em>, deployed zero-shot</h2>
+                </div>
+
+                <div class="bk-grid">
+                    <div class="bk-video">
+                        <div class="bk-label">Backup avoidance in simulation</div>
+                        <div class="bk-video-box">
+                            <video class="bk-video-el" src="../../../videos/simulation_backup.webm" controls loop muted playsinline></video>
+                        </div>
+                    </div>
+                    <div class="bk-text-stack">
+                        <div class="bk-training">
+                            <div class="bk-label">How it is trained</div>
+                            <p>Pure-simulation <span class="mono">SAC + Domain Randomization</span> &mdash; same network as the task policy. Reward / geometry evolution <span class="mono">V1 &rarr; V3 &rarr; V3b</span>; final V3b uses 5 link-spheres (link3 / 4 / 5 / 6 / hand), <em>min</em> distance. Sim hand-collision rate <span class="mono">3%</span> &mdash; expected upper bound for real.</p>
+                        </div>
+                        <div class="bk-contrast">
+                            <div class="bk-label">Why no real-robot fine-tuning?</div>
+                            <p>Task policy needs <span class="mono">HG-DAgger</span> on the real robot &mdash; vision-heavy, large sim-real gap. Backup policy reasons over <em>joint / Cartesian distances</em> only &mdash; small gap, so <em>zero-shot transfer</em> works: load the V3b checkpoint directly.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bk-conclusion">
+                    <span class="bk-kicker">&rArr;</span>
+                    Two policies, two training regimes &mdash; task adapts <em>on the real robot</em>, backup transfers <em>zero-shot</em>. Real-robot deployment follows next; the two are coordinated at runtime by the Supervisor FSM.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 16 · BACKUP POLICY · REAL-ROBOT DEPLOYMENT ════════ -->
+        <div class="slide slide-backup-deploy">
+            <div class="content">
+                <div class="bd-head">
+                    <div class="label">§ 3 · Method · Backup Policy &middot; Real-Robot Deployment</div>
+                    <h2 class="bd-headline">Backup avoidance on the real robot &mdash; <em>zero-shot from simulation</em></h2>
+                </div>
+                <div class="bd-video-wrap">
+                    <video class="bd-video" src="../../../videos/real_robot_backup_cropped.mp4" controls loop muted playsinline></video>
+                </div>
+                <div class="bd-caption">
+                    <span class="bd-kicker">&middot;</span>
+                    V3b checkpoint loaded directly, no retraining. Route A geometry alignment (<span class="mono">TCP<tspan>true</tspan> &minus; TCP_OFFSET &middot; n<tspan>hand</tspan></span>) matches the sim training geometry exactly &mdash; the gap that needs closing is geometric, not perceptual.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 17 · HIERARCHICAL SUPERVISOR FSM ══════════════════ -->
+        <div class="slide slide-supervisor">
+            <div class="content">
+                <div class="sup-head">
+                    <div class="label">§ 3 · Method · Hierarchical Supervisor FSM</div>
+                    <h2 class="sup-headline">Runtime coordination &mdash; <em>three-state switching</em> between task &amp; backup</h2>
+                </div>
+
+                <div class="sup-fsm-wrap">
+                  <div class="sup-fsm-diagram">
+                    <svg viewBox="0 0 720 300" xmlns="http://www.w3.org/2000/svg" class="fsm-svg">
+                        <g class="fsm-state">
+                            <rect x="30" y="50" width="170" height="80" rx="6"/>
+                            <text x="115" y="86" text-anchor="middle" class="fsm-state-name">TASK</text>
+                            <text x="115" y="108" text-anchor="middle" class="fsm-state-sub">task policy outputs action</text>
+                        </g>
+                        <g class="fsm-state">
+                            <rect x="275" y="50" width="170" height="80" rx="6"/>
+                            <text x="360" y="86" text-anchor="middle" class="fsm-state-name">BACKUP</text>
+                            <text x="360" y="108" text-anchor="middle" class="fsm-state-sub">backup policy outputs action</text>
+                        </g>
+                        <g class="fsm-state">
+                            <rect x="520" y="50" width="170" height="80" rx="6"/>
+                            <text x="605" y="86" text-anchor="middle" class="fsm-state-name">HOMING</text>
+                            <text x="605" y="108" text-anchor="middle" class="fsm-state-sub">6D clipped-P controller</text>
+                        </g>
+
+                        <line x1="200" y1="90" x2="270" y2="90" class="fsm-arrow" marker-end="url(#sup-mk)"/>
+                        <text x="235" y="40" text-anchor="middle" class="fsm-cond">&lVert;p<tspan baseline-shift="sub">hand</tspan>&minus;TCP&rVert; &lt; D<tspan baseline-shift="sub">SAFE</tspan></text>
+                        <text x="235" y="25" text-anchor="middle" class="fsm-cond">(0.40 m)</text>
+
+                        <line x1="445" y1="90" x2="515" y2="90" class="fsm-arrow" marker-end="url(#sup-mk)"/>
+                        <text x="480" y="40" text-anchor="middle" class="fsm-cond">&lVert;&hellip;&rVert; &gt; D<tspan baseline-shift="sub">CLEAR</tspan></text>
+                        <text x="480" y="25" text-anchor="middle" class="fsm-cond">(0.45 m, hysteresis)</text>
+
+                        <path d="M 605 130 L 605 185 L 115 185 L 115 132" class="fsm-arrow" fill="none" marker-end="url(#sup-mk)"/>
+                        <text x="360" y="208" text-anchor="middle" class="fsm-cond">reached BACKUP-entry pose &rarr; hand control back to TASK</text>
+
+                        <defs>
+                            <marker id="sup-mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+                                <path d="M 0 0 L 10 5 L 0 10 z" fill="#5a5a5a"/>
+                            </marker>
+                        </defs>
+                    </svg>
+                  </div>
+                  <div class="sup-video">
+                    <div class="sup-video-label">FSM in action (real robot)</div>
+                    <div class="sup-video-box">
+                        <span class="sup-video-play">&#9654;</span>
+                        <span class="sup-video-note">video to be added</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="sup-conclusion">
+                    <span class="sup-kicker">&rArr;</span>
+                    HOMING resets the TCP to the BACKUP-entry pose, then hands control back to the task policy &mdash; <em>backup contributes &asymp; 0 to task success</em>. This is why the &sect; 5 main matrix has no backup column.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ DIVIDER · § 4 SIMULATION RESULTS ════════════════════════ -->
+        <div class="slide slide-divider">
+            <div class="divider-content">
+                <div class="divider-num">&sect;&nbsp;4</div>
+                <div class="divider-rule"></div>
+                <div class="divider-name">Simulation Results</div>
+                <div class="divider-sub">H1 / H2 / H3 &middot; HIL-SERL negative result</div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 19 · H1 + H2 / H3 (sim main result) ══════════════ -->
+        <div class="slide slide-h123">
+            <div class="content">
+                <div class="h123-head">
+                    <div class="label">§ 4 · Simulation Results · H1 / H2 / H3</div>
+                    <h2 class="h123-headline">Random-bias training works &mdash; <em>and generalizes beyond the training range</em></h2>
+                </div>
+
+                <div class="h123-main">
+                  <div class="h123-chart-wrap">
+                    <svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg" class="h123-svg">
+                        <!-- training-range shaded band [0, 0.25] -->
+                        <rect x="100" y="60" width="633.3" height="280" class="h123-band"/>
+                        <text x="416" y="78" text-anchor="middle" class="h123-band-label">random-bias π trained on [0, 0.25] rad</text>
+
+                        <!-- gridlines + y labels -->
+                        <line x1="100" y1="60"  x2="860" y2="60"  class="h123-grid"/>
+                        <line x1="100" y1="130" x2="860" y2="130" class="h123-grid"/>
+                        <line x1="100" y1="200" x2="860" y2="200" class="h123-grid"/>
+                        <line x1="100" y1="270" x2="860" y2="270" class="h123-grid"/>
+                        <line x1="100" y1="340" x2="860" y2="340" class="h123-axis"/>
+                        <text x="88" y="64"  text-anchor="end" class="h123-tick">100</text>
+                        <text x="88" y="134" text-anchor="end" class="h123-tick">75</text>
+                        <text x="88" y="204" text-anchor="end" class="h123-tick">50</text>
+                        <text x="88" y="274" text-anchor="end" class="h123-tick">25</text>
+                        <text x="88" y="344" text-anchor="end" class="h123-tick">0</text>
+                        <text x="40" y="200" text-anchor="middle" class="h123-axis-title" transform="rotate(-90 40 200)">success rate (%)</text>
+
+                        <!-- x axis line + ticks -->
+                        <line x1="100" y1="60" x2="100" y2="340" class="h123-axis"/>
+                        <text x="100"   y="362" text-anchor="middle" class="h123-tick">0.00</text>
+                        <text x="226.7" y="362" text-anchor="middle" class="h123-tick">0.05</text>
+                        <text x="353.3" y="362" text-anchor="middle" class="h123-tick">0.10</text>
+                        <text x="480"   y="362" text-anchor="middle" class="h123-tick">0.15</text>
+                        <text x="606.7" y="362" text-anchor="middle" class="h123-tick">0.20</text>
+                        <text x="733.3" y="362" text-anchor="middle" class="h123-tick">0.25</text>
+                        <text x="860"   y="362" text-anchor="middle" class="h123-tick">0.30</text>
+                        <text x="480" y="388" text-anchor="middle" class="h123-axis-title">encoder bias (rad)</text>
+
+                        <!-- no-bias π (red, solid + dots) -->
+                        <polyline points="100,60 226.7,60 353.3,116 480,166.4 606.7,197.2 733.3,326 860,340" class="h123-line h123-line-nobias"/>
+                        <g class="h123-dots h123-dots-nobias">
+                            <circle cx="100" cy="60" r="4"/><circle cx="226.7" cy="60" r="4"/><circle cx="353.3" cy="116" r="4"/><circle cx="480" cy="166.4" r="4"/><circle cx="606.7" cy="197.2" r="4"/><circle cx="733.3" cy="326" r="4"/><circle cx="860" cy="340" r="4"/>
+                        </g>
+
+                        <!-- fixed b=0.2 π (gray, dashed + open dots) -->
+                        <polyline points="100,107.6 226.7,96.4 353.3,62.8 480,60 606.7,60 733.3,60 860,62.8" class="h123-line h123-line-fixed"/>
+                        <g class="h123-dots h123-dots-fixed">
+                            <circle cx="100" cy="107.6" r="4"/><circle cx="226.7" cy="96.4" r="4"/><circle cx="353.3" cy="62.8" r="4"/><circle cx="480" cy="60" r="4"/><circle cx="606.7" cy="60" r="4"/><circle cx="733.3" cy="60" r="4"/><circle cx="860" cy="62.8" r="4"/>
+                        </g>
+
+                        <!-- random [0,0.25] π (black, solid thick + filled dots) -->
+                        <polyline points="100,82.4 226.7,60 353.3,62.8 480,71.2 606.7,68.4 733.3,71.2 860,62.8" class="h123-line h123-line-random"/>
+                        <g class="h123-dots h123-dots-random">
+                            <circle cx="100" cy="82.4" r="4.5"/><circle cx="226.7" cy="60" r="4.5"/><circle cx="353.3" cy="62.8" r="4.5"/><circle cx="480" cy="71.2" r="4.5"/><circle cx="606.7" cy="68.4" r="4.5"/><circle cx="733.3" cy="71.2" r="4.5"/><circle cx="860" cy="62.8" r="4.5"/>
+                        </g>
+
+                        <!-- annotations -->
+                        <text x="700" y="248" text-anchor="middle" class="h123-anno h123-anno-warn">H1 — no-bias π collapses</text>
+                        <text x="360" y="46"  class="h123-anno">H3 — random-bias π robust 92&ndash;100%, extrapolates to 0.30 rad</text>
+
+                        <!-- legend (lower-left empty area) -->
+                        <g class="h123-legend">
+                            <line x1="132" y1="222" x2="162" y2="222" class="h123-line h123-line-nobias"/>
+                            <text x="170" y="226" class="h123-legend-label">no-bias π</text>
+                            <line x1="132" y1="248" x2="162" y2="248" class="h123-line h123-line-fixed"/>
+                            <text x="170" y="252" class="h123-legend-label">fixed b=0.2 π &mdash; over-compensates at b=0 (83%)</text>
+                            <line x1="132" y1="274" x2="162" y2="274" class="h123-line h123-line-random"/>
+                            <text x="170" y="278" class="h123-legend-label">random [0,0.25] π &mdash; robust 92&ndash;100%</text>
+                        </g>
+                    </svg>
+                  </div>
+                  <div class="h123-video">
+                    <div class="h123-video-label">no-bias π under 0.2 rad bias</div>
+                    <div class="h123-video-box">
+                        <video class="h123-video-el" src="../../../videos/nobiaspolciy_fix02biaseval.webm" controls loop muted playsinline></video>
+                    </div>
+                    <div class="h123-video-caption">PickCube &mdash; no-bias π at 0.2 rad encoder bias (~50%, see H1 curve) &middot; TCP drifts to the side, the policy can't compensate</div>
+                  </div>
+                </div>
+
+                <div class="h123-takeaways">
+                    <div class="h123-tk"><span class="h123-tk-tag">H1</span><span><em>no-bias π</em> degrades past 0.10 rad, collapses at &ge; 0.25 rad; TCP shifts ~3 cm per 0.05 rad &mdash; verifies <em>Prop. 1</em> (not identifiable from proprioception alone).</span></div>
+                    <div class="h123-tk"><span class="h123-tk-tag">H2</span><span><em>fixed-bias π</em> over-compensates at b=0 (only 83%) &mdash; single-point conditioning overshoots at the calibration state.</span></div>
+                    <div class="h123-tk"><span class="h123-tk-tag">H3</span><span><em>random-bias π</em> robust 92&ndash;100% across the full range, even at 0.30 rad &mdash; beyond the 0.25 rad training ceiling.</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 20 · OBSERVATION ABLATION ════════════════════════ -->
+        <div class="slide slide-ablation">
+            <div class="content">
+                <div class="abl-head">
+                    <div class="label">§ 4 · Simulation Results · Observation Ablation</div>
+                    <h2 class="abl-headline">Remove the external signal &rarr; identifiability breaks &mdash; <em>exactly as predicted</em></h2>
+                </div>
+
+                <table class="abl-table">
+                    <thead>
+                        <tr>
+                            <th class="abl-th-name">Observation</th>
+                            <th class="abl-th-dim">Dim</th>
+                            <th class="abl-th-missing">Missing key signal</th>
+                            <th class="abl-th-result">Result</th>
+                            <th class="abl-th-theory">Theory prediction</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="abl-name">18D</td>
+                            <td class="abl-dim">18</td>
+                            <td><span class="mono">real_tcp</span> + <span class="mono">block_pos</span></td>
+                            <td class="abl-result bad">42% avg</td>
+                            <td>not identifiable &mdash; <em>Prop. 1</em></td>
+                        </tr>
+                        <tr>
+                            <td class="abl-name">21D</td>
+                            <td class="abl-dim">21</td>
+                            <td><span class="mono">real_tcp</span></td>
+                            <td class="abl-result bad">46% avg</td>
+                            <td>"knows the goal, not itself" &mdash; still not identifiable</td>
+                        </tr>
+                        <tr class="abl-row-key">
+                            <td class="abl-name">24D &#9733;</td>
+                            <td class="abl-dim">24</td>
+                            <td>(complete)</td>
+                            <td class="abl-result good">92&ndash;100%</td>
+                            <td>approx. identifiable &mdash; <em>Prop. 2</em></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <div class="abl-conclusion">
+                    <span class="abl-kicker">&rArr;</span>
+                    42% (Prop. 1, unidentifiable) &rarr; 46% (the goal position barely helps) &rarr; 92&ndash;100% (Prop. 2, <span class="mono">real_tcp</span> breaks the (q<sub>true</sub>, b) symmetry). The decisive signal is <em>real_tcp</em> &mdash; not more dimensions. (PickCube ablation env; deployment uses the equivalent 25D.)
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 21 · BACKUP POLICY IN SIMULATION ═════════════════ -->
+        <div class="slide slide-backup-sim">
+            <div class="content">
+                <div class="bs-head">
+                    <div class="label">§ 4 · Simulation Results · Backup Policy</div>
+                    <h2 class="bs-headline">Backup avoidance &mdash; <em>V3b reaches 95% survival</em>; one parameter saved two failure modes</h2>
+                </div>
+
+                <div class="bs-grid">
+                    <div class="bs-data">
+                        <div class="bs-data-label">Eval &middot; S1 V3 vs V3b &middot; 200 episodes each &middot; 300k steps</div>
+
+                        <div class="bs-grp">
+                            <div class="bs-grp-label">V3</div>
+                            <div class="bs-stats">
+                                <div class="bs-stat"><span class="bs-stat-val">66.5%</span><span class="bs-stat-key">survived</span></div>
+                                <div class="bs-stat"><span class="bs-stat-val">+8.0</span><span class="bs-stat-key">mean reward</span></div>
+                                <div class="bs-stat"><span class="bs-stat-val">0.40 m</span><span class="bs-stat-key">disp budget</span></div>
+                                <div class="bs-stat"><span class="bs-stat-val">200</span><span class="bs-stat-key">eval episodes</span></div>
+                            </div>
+                            <div class="bs-bars">
+                                <div class="bs-bar"><span class="bs-bar-name">survived</span><span class="bs-bar-track"><span class="bs-bar-fill" style="width:66.5%"></span></span><span class="bs-bar-val">66.5%</span></div>
+                                <div class="bs-bar"><span class="bs-bar-name">hand collision</span><span class="bs-bar-track"><span class="bs-bar-fill bad" style="width:17.5%"></span></span><span class="bs-bar-val">17.5%</span></div>
+                                <div class="bs-bar"><span class="bs-bar-name">excess. disp</span><span class="bs-bar-track"><span class="bs-bar-fill bad" style="width:14.5%"></span></span><span class="bs-bar-val">14.5%</span></div>
+                            </div>
+                        </div>
+
+                        <div class="bs-grp-arrow">&darr;&nbsp;&nbsp;single parameter: <span class="mono">max_disp 0.40 &rarr; 0.50</span></div>
+
+                        <div class="bs-grp">
+                            <div class="bs-grp-label bs-grp-good">V3b &nbsp;&#9733;</div>
+                            <div class="bs-stats">
+                                <div class="bs-stat"><span class="bs-stat-val">91.0%</span><span class="bs-stat-key">survived <span class="bs-cmp-delta">+24.5%</span></span></div>
+                                <div class="bs-stat"><span class="bs-stat-val">+11.4</span><span class="bs-stat-key">mean reward</span></div>
+                                <div class="bs-stat"><span class="bs-stat-val">0.50 m</span><span class="bs-stat-key">disp budget</span></div>
+                                <div class="bs-stat"><span class="bs-stat-val">200</span><span class="bs-stat-key">eval episodes</span></div>
+                            </div>
+                            <div class="bs-bars">
+                                <div class="bs-bar"><span class="bs-bar-name">survived</span><span class="bs-bar-track"><span class="bs-bar-fill" style="width:91%"></span></span><span class="bs-bar-val">91.0%</span></div>
+                                <div class="bs-bar"><span class="bs-bar-name">hand collision</span><span class="bs-bar-track"><span class="bs-bar-fill bad" style="width:3%"></span></span><span class="bs-bar-val">3.0% <span class="bs-cmp-delta">&darr;5&times;</span></span></div>
+                                <div class="bs-bar"><span class="bs-bar-name">excess. disp</span><span class="bs-bar-track"><span class="bs-bar-fill bad" style="width:5.5%"></span></span><span class="bs-bar-val">5.5%</span></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bs-videos">
+                        <div class="bs-video">
+                            <div class="bs-video-label">Backup eval under J1 bias</div>
+                            <div class="bs-video-box"><video class="bs-video-el" src="../../../videos/Backup_eval_under_J1_bias.webm" controls loop muted playsinline></video></div>
+                        </div>
+                        <div class="bs-video">
+                            <div class="bs-video-label">Multi-obstacle backup training</div>
+                            <div class="bs-video-box"><video class="bs-video-el" src="../../../videos/multiball_backup.webm" controls loop muted playsinline></video></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bs-conclusion">
+                    <span class="bs-kicker">&rArr;</span>
+                    Backup reads only <span class="mono">tcp_true</span> (the external channel) &mdash; encoder bias is physically invisible to it. Injecting J1 bias barely changes survival (<span class="mono">86.5%</span> vs <span class="mono">91%</span> clean). Robustness comes <em>for free</em>; no bias-aware training.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE 22 · HIL-SERL NEGATIVE RESULT ════════════════════ -->
+        <div class="slide slide-hilfail">
+            <div class="content">
+                <div class="hf-head">
+                    <div class="label">§ 4 · Simulation Results · HIL-SERL on the Real Robot &mdash; a Negative Result</div>
+                    <h2 class="hf-headline">Online RL fails on the real robot &mdash; <em>the actor drifts the moment it unfreezes</em></h2>
+                </div>
+
+                <div class="hf-grid">
+                    <div class="hf-col">
+                        <div class="hf-label">What happened</div>
+                        <svg viewBox="0 0 480 200" xmlns="http://www.w3.org/2000/svg" class="hf-svg">
+                            <line x1="50" y1="30" x2="50" y2="165" class="hf-axis"/>
+                            <line x1="50" y1="165" x2="460" y2="165" class="hf-axis"/>
+                            <text x="44" y="48" text-anchor="end" class="hf-tick">~0.7</text>
+                            <text x="44" y="152" text-anchor="end" class="hf-tick">~0.05</text>
+                            <text x="44" y="169" text-anchor="end" class="hf-tick">0</text>
+                            <text x="24" y="98" text-anchor="middle" class="hf-axis-title" transform="rotate(-90 24 98)">action L2 norm</text>
+                            <text x="255" y="186" text-anchor="middle" class="hf-axis-title">training steps</text>
+                            <!-- critic-only warmup band -->
+                            <rect x="50" y="30" width="200" height="135" class="hf-band"/>
+                            <text x="150" y="46" text-anchor="middle" class="hf-band-label">critic-only warmup (actor frozen)</text>
+                            <!-- curve: flat ~0.05, jump at unfreeze, erratic high -->
+                            <polyline points="50,146 130,146 250,146" class="hf-line hf-line-ok"/>
+                            <polyline points="250,146 250,52 295,60 335,44 380,56 425,42 460,50" class="hf-line hf-line-bad"/>
+                            <!-- unfreeze marker -->
+                            <line x1="250" y1="30" x2="250" y2="165" class="hf-marker"/>
+                            <text x="256" y="40" class="hf-anno hf-anno-warn">actor unfreezes &rarr; jumps to ~0.6, near action-scale ceiling</text>
+                            <text x="60" y="138" class="hf-anno">stays ~0.05 (= BC behavior)</text>
+                        </svg>
+                        <p class="hf-body">Entering SAC online from the BC checkpoint: within 1&ndash;2 episodes after the actor unfreezes the policy diverges from BC &mdash; TCP flies to the workspace edge &ge; 3&times;/episode, gripper opens/closes nonstop. Multiple P0 fixes (HTTP retry, temperature floor, critic-only warmup, NaN skip, encoder freeze, &hellip;) &mdash; <em>all effective in simulation, none fixed it on the real robot.</em></p>
+                    </div>
+                    <div class="hf-col">
+                        <div class="hf-label">Leading hypothesis</div>
+                        <p class="hf-body"><em>The Q-surface is too flat.</em> Under 50 demos + sparse reward + short episodes, the critic's Bellman-error surface is nearly indistinguishable across actions at a given state &mdash; once the actor unfreezes, its gradient direction is essentially arbitrary. HIL-SERL relies on high real-robot throughput to let the critic calibrate the Q-surface online; at <span class="mono">10 Hz / &le; 30 s</span> episodes that condition isn't met. HG-DAgger doesn't depend on a critic &mdash; improvement comes directly from the human correction gradient.</p>
+                        <div class="hf-label hf-label-alt">Alternatives (not ruled out)</div>
+                        <ul class="hf-alts">
+                            <li>keyboard reward-label noise &rarr; contaminates Q-target</li>
+                            <li>BC (MLE) vs SAC (max-Q) actor / critic mismatch</li>
+                            <li>gRPC tens-of-ms jitter amplifies critic instability</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="hf-conclusion">
+                    <span class="hf-kicker">&rArr;</span>
+                    Recorded as a <em>methodological negative result</em> &mdash; and the direct reason the real-robot path uses BC + HG-DAgger, not online RL. A warning for anyone considering HIL-SERL at this throughput / data scale.
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ DIVIDER · § 5 REAL-ROBOT RESULTS ════════════════════════ -->
+        <div class="slide slide-divider">
+            <div class="divider-content">
+                <div class="divider-num">&sect;&nbsp;5</div>
+                <div class="divider-rule"></div>
+                <div class="divider-name">Real-Robot Results</div>
+                <div class="divider-sub">4-column train &times; test bias matrix &middot; HG-DAgger convergence</div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE · REAL-ROBOT SYSTEM SETUP ════════════════════════ -->
+        <div class="slide slide-realsetup">
+            <div class="content">
+                <div class="rs-head">
+                    <div class="label">§ 5 · Real-Robot Results · System Setup</div>
+                    <h2 class="rs-headline">Distributed architecture &mdash; <em>real-time control on the RT PC, learning on the GPU station</em></h2>
+                </div>
+                <div class="rs-figure-wrap">
+                    <img class="rs-figure" src="../../assets/figures/fig_6_1_hardware_en.png" alt="Real-robot system architecture"/>
+                </div>
+                <div class="rs-caption">
+                    <span class="rs-kicker">&middot;</span>
+                    Franka FR3 &harr; RT PC (PREEMPT_RT, 1 kHz control, <span class="mono">serl_franka_controllers</span> with B-injection, <span class="mono">franka_server</span> with D-injection) &harr; GPU station (<span class="mono">frrl</span> package, Hierarchical Supervisor, dual D455, SpaceMouse). Control and compute decoupled; encoder bias is injected at <em>B</em> (control law) and <em>D</em> (HTTP API).
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE · HG-DAGGER CONVERGENCE ══════════════════════════ -->
+        <div class="slide slide-dagger-conv">
+            <div class="content">
+                <div class="dc-head">
+                    <div class="label">§ 5 · Real-Robot Results · HG-DAgger Convergence</div>
+                    <h2 class="dc-headline">Intervention rate decays monotonically &mdash; <em>iter 2 converges</em></h2>
+                </div>
+                <div class="dc-chart-wrap">
+                    <svg viewBox="0 0 720 340" xmlns="http://www.w3.org/2000/svg" class="dc-svg">
+                        <!-- gridlines + y labels -->
+                        <line x1="90" y1="50"  x2="650" y2="50"  class="dc-grid"/>
+                        <line x1="90" y1="165" x2="650" y2="165" class="dc-grid"/>
+                        <line x1="90" y1="280" x2="650" y2="280" class="dc-axis"/>
+                        <text x="80" y="54"  text-anchor="end" class="dc-tick">50%</text>
+                        <text x="80" y="169" text-anchor="end" class="dc-tick">25%</text>
+                        <text x="80" y="284" text-anchor="end" class="dc-tick">0%</text>
+                        <text x="34" y="165" text-anchor="middle" class="dc-axis-title" transform="rotate(-90 34 165)">intervention rate</text>
+                        <!-- x axis line + ticks -->
+                        <line x1="90" y1="50" x2="90" y2="280" class="dc-axis"/>
+                        <text x="90"  y="302" text-anchor="middle" class="dc-tick">iter 0</text>
+                        <text x="370" y="302" text-anchor="middle" class="dc-tick">iter 1</text>
+                        <text x="650" y="302" text-anchor="middle" class="dc-tick">iter 2</text>
+                        <text x="370" y="324" text-anchor="middle" class="dc-axis-title">HG-DAgger iteration</text>
+
+                        <!-- pickandplace (red solid) -->
+                        <polyline points="90,59.2 370,178.8 650,257" class="dc-line dc-line-pap"/>
+                        <g class="dc-dots dc-dots-pap"><circle cx="90" cy="59.2" r="4.5"/><circle cx="370" cy="178.8" r="4.5"/><circle cx="650" cy="257" r="4.5"/></g>
+                        <!-- pickup (black solid) -->
+                        <polyline points="90,86.8 370,201.8 650,261.6" class="dc-line dc-line-pick"/>
+                        <g class="dc-dots dc-dots-pick"><circle cx="90" cy="86.8" r="4.5"/><circle cx="370" cy="201.8" r="4.5"/><circle cx="650" cy="261.6" r="4.5"/></g>
+                        <!-- wipe (grey dashed) -->
+                        <polyline points="90,105.2 370,224.8 650,266.2" class="dc-line dc-line-wipe"/>
+                        <g class="dc-dots dc-dots-wipe"><circle cx="90" cy="105.2" r="4"/><circle cx="370" cy="224.8" r="4"/><circle cx="650" cy="266.2" r="4"/></g>
+
+                        <!-- value labels -->
+                        <text x="90" y="48" text-anchor="middle" class="dc-vlbl">48 / 42 / 38%</text>
+                        <text x="650" y="248" text-anchor="middle" class="dc-vlbl">5 / 4 / 3%</text>
+
+                        <!-- legend -->
+                        <g class="dc-legend">
+                            <line x1="430" y1="90" x2="460" y2="90" class="dc-line dc-line-pick"/>
+                            <text x="466" y="94" class="dc-legend-label">pickup &nbsp;42 &rarr; 17 &rarr; 4%</text>
+                            <line x1="430" y1="112" x2="460" y2="112" class="dc-line dc-line-wipe"/>
+                            <text x="466" y="116" class="dc-legend-label">wipe &nbsp;38 &rarr; 12 &rarr; 3%</text>
+                            <line x1="430" y1="134" x2="460" y2="134" class="dc-line dc-line-pap"/>
+                            <text x="466" y="138" class="dc-legend-label">pickandplace &nbsp;48 &rarr; 22 &rarr; 5%</text>
+                        </g>
+                    </svg>
+                </div>
+                <div class="dc-conclusion">
+                    <span class="dc-kicker">&rArr;</span>
+                    All three tasks converge by iter 2 (intervention rate &lt; 5%). The 4-column matrix uses these iter-2 checkpoints. <span class="dc-note">N = 10, exploratory.</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE · 4-COL MATRIX (highlight) ════════════════════════ -->
+        <div class="slide slide-matrix">
+            <div class="content">
+                <div class="slide-head">
+                    <div class="label">§ Real-Robot Results · Main Finding</div>
+                    <h2>Train &times; Test Bias Success-Rate Matrix — <em>random-bias training</em> is necessary, sufficient, and side-effect-free</h2>
+                </div>
+                <div class="matrix-wrap">
+                    <table class="matrix-table">
+                        <thead>
+                            <tr>
+                                <th rowspan="2" class="th-task">Task<br/><span class="th-meta">N = 10</span></th>
+                                <th colspan="2" class="th-group">Trained <em>without</em> bias</th>
+                                <th colspan="2" class="th-group">Trained <em>with</em> bias</th>
+                            </tr>
+                            <tr>
+                                <th class="th-sub">Test no-bias</th>
+                                <th class="th-sub">Test w/ bias</th>
+                                <th class="th-sub">Test no-bias</th>
+                                <th class="th-sub">Test w/ bias</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td class="td-task">wipe</td>
+                                <td>10/10</td>
+                                <td class="td-bad">4/10</td>
+                                <td>10/10</td>
+                                <td class="td-good">8/10</td>
+                            </tr>
+                            <tr>
+                                <td class="td-task">pickup</td>
+                                <td>8/10</td>
+                                <td class="td-bad">3/10</td>
+                                <td>8/10</td>
+                                <td class="td-good">6/10</td>
+                            </tr>
+                            <tr>
+                                <td class="td-task">pickandplace</td>
+                                <td>7/10</td>
+                                <td class="td-bad">2/10</td>
+                                <td>7/10</td>
+                                <td class="td-good">5/10</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="matrix-demos">
+                        <div class="demo-col-head">Col 2 · collapse</div>
+                        <div class="demo-col-head">Col 4 · robust</div>
+                        <div class="demo-thumb bad"><span class="demo-task">wipe</span><span class="demo-play">▶</span></div>
+                        <div class="demo-thumb good"><span class="demo-task">wipe</span><span class="demo-play">▶</span></div>
+                        <div class="demo-thumb bad"><span class="demo-task">pickup</span><span class="demo-play">▶</span></div>
+                        <div class="demo-thumb good"><span class="demo-task">pickup</span><span class="demo-play">▶</span></div>
+                        <div class="demo-thumb bad"><span class="demo-task">p&amp;p</span><span class="demo-play">▶</span></div>
+                        <div class="demo-thumb good"><span class="demo-task">p&amp;p</span><span class="demo-play">▶</span></div>
+                    </div>
+                </div>
+                <div class="matrix-obs">
+                    <div class="obs-item"><span class="obs-num">1</span><span><em>Col 1&rarr;2 collapse</em> — clean-trained policy drops 50%+ under bias</span></div>
+                    <div class="obs-item"><span class="obs-num">2</span><span><em>Col 4 robust</em> — bias-trained policy holds under bias deployment</span></div>
+                    <div class="obs-item"><span class="obs-num">3</span><span><em>Col 1&asymp;3 no side-effect</em> — bias-trained policy doesn't degrade in clean env</span></div>
+                    <div class="obs-item"><span class="obs-num">4</span><span><em>Col 4 &lt; Col 3 residual gap</em> — entry point for future work (two-step ablation)</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ DIVIDER · § 6 CONCLUSION & FUTURE WORK ══════════════════ -->
+        <div class="slide slide-divider">
+            <div class="divider-content">
+                <div class="divider-num">&sect;&nbsp;6</div>
+                <div class="divider-rule"></div>
+                <div class="divider-name">Conclusion &amp; Future Work</div>
+                <div class="divider-sub">limitations &middot; two-step ablation as next step</div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE · CONCLUSION (three contributions + limitations) ══ -->
+        <div class="slide slide-conclusion">
+            <div class="content">
+                <div class="cn-head">
+                    <div class="label">§ 6 · Conclusion</div>
+                    <h2 class="cn-headline">Three contributions &mdash; <em>theory, method, empirics</em></h2>
+                </div>
+                <div class="cn-grid">
+                    <div class="cn-card">
+                        <div class="cn-num">I</div>
+                        <div class="cn-tag">Theory</div>
+                        <p>POMDP formulation of encoder bias &mdash; one-source-three-effect causal chain; two identifiability propositions (Prop. 1 unidentifiable from proprioception alone / Prop. 2 approx. identifiable with an external position signal). "Identifiable &ne; solvable" &rarr; random-bias training is necessary.</p>
+                    </div>
+                    <div class="cn-card">
+                        <div class="cn-num">II</div>
+                        <div class="cn-tag">Method</div>
+                        <p>task &oplus; backup &times; sim/real dual-path framework. Shared 25D observation + random-bias training + frozen DINOv3 backbone. HIL-SERL (sim) / BC + HG-DAgger (real). Hierarchical Supervisor &mdash; 3-state FSM (TASK / BACKUP / HOMING).</p>
+                    </div>
+                    <div class="cn-card">
+                        <div class="cn-num">III</div>
+                        <div class="cn-tag">Empirics</div>
+                        <p>4-column train &times; test bias success-rate matrix on 3 real-robot tasks (pickup / wipe / pickandplace). Plus a methodological negative result &mdash; HIL-SERL fails on the real robot under sparse-reward / 10 Hz / N = 1.</p>
+                    </div>
+                </div>
+                <div class="cn-limits">
+                    <div class="cn-limits-label">Limitations</div>
+                    <div class="cn-limits-grid">
+                        <div class="cn-limit">Real-robot bias closed loop not completed &mdash; uses the <span class="mono">tcp_true</span> privileged channel, not the implicit identification of Prop. 2.</div>
+                        <div class="cn-limit">Bias types limited &mdash; J1 single joint, episode-constant; no thermal drift or multi-joint coupling.</div>
+                        <div class="cn-limit">Single platform (Franka Panda) + 3 kitchen tasks; the paradigm-choice principle needs more platforms.</div>
+                        <div class="cn-limit">HIL-SERL negative result: N = 1, 10 Hz; "Q-surface flat" is the leading hypothesis, not confirmed.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE · FUTURE WORK + THANKS ═══════════════════════════ -->
+        <div class="slide slide-future">
+            <div class="content">
+                <div class="fw-head">
+                    <div class="label">§ 6 · Future Work</div>
+                    <h2 class="fw-headline">Future work &mdash; <em>closing the real-robot identifiability loop</em></h2>
+                </div>
+                <div class="fw-grid">
+                    <div class="fw-item">
+                        <div class="fw-num">1</div>
+                        <div class="fw-body">
+                            <div class="fw-title">Two-step ablation on the real robot <span class="fw-most">most direct</span></div>
+                            <p>(i) replace <span class="mono">tcp_true</span> with <span class="mono">tcp_biased</span> = FK(q+b) &rarr; should fail (Prop. 1). (ii) add the encoder path q+b &rarr; should recover (Prop. 2). Isomorphic to the sim H2/H3 path.</p>
+                        </div>
+                    </div>
+                    <div class="fw-item">
+                        <div class="fw-num">2</div>
+                        <div class="fw-body">
+                            <div class="fw-title">Explicit bias estimator</div>
+                            <p>Online least-squares from the Jacobian (short-term) or an RMA-style GRU over action-state history (mid-term) &rarr; feed <span class="mono">b&#770;</span> directly to the policy.</p>
+                        </div>
+                    </div>
+                    <div class="fw-item">
+                        <div class="fw-num">3</div>
+                        <div class="fw-body">
+                            <div class="fw-title">Residual RL &amp; offline RL real-robot comparison</div>
+                            <p>Residual RL (base controller + RL residual) and offline RL (IQL / CQL on demos) as baselines &mdash; quantify the boundary of the paradigm-choice principle.</p>
+                        </div>
+                    </div>
+                    <div class="fw-item">
+                        <div class="fw-num">4</div>
+                        <div class="fw-body">
+                            <div class="fw-title">Multi-joint / time-varying bias &amp; other faults</div>
+                            <p>Coupled multi-joint bias, thermal drift, encoder noise, joint jam, actuator degradation &mdash; map the framework's range of applicability.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ SLIDE · THANK YOU (closing, Uni Stuttgart format) ══════ -->
+        <div class="slide slide-thanks">
+            <img class="ty-uni-logo" src="../../assets/logos/uni-stuttgart.png" alt="University of Stuttgart"/>
+            <div class="ty-institute">Institute of Industrial Automation<br/>and Software Engineering</div>
+            <div class="ty-body">
+                <div class="ty-big">Thank you<br/><em>Questions?</em></div>
+                <div class="ty-contact">
+                    <div class="ty-contact-row"><span class="ty-k">Author</span> Cheng Cheng</div>
+                    <div class="ty-contact-row"><span class="ty-k">Email</span> ccdeu2021@outlook.com</div>
+                    <div class="ty-contact-row"><span class="ty-k">Supervisor</span> Prof. Andrey Morozov</div>
+                    <div class="ty-contact-row"><span class="ty-k">Affiliation</span> IAS &middot; University of Stuttgart</div>
+                </div>
+            </div>
+            <img class="ty-ias-big" src="../../assets/logos/ias-sublogo.jpeg" alt="IAS"/>
+        </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="nav-dots">
+        <div class="nav-dot active" data-slide="0"></div>
+        <div class="nav-dot" data-slide="1"></div>
+        <div class="nav-dot" data-slide="2"></div>
+        <div class="nav-dot" data-slide="3"></div>
+        <div class="nav-dot" data-slide="4"></div>
+        <div class="nav-dot" data-slide="5"></div>
+        <div class="nav-dot" data-slide="6"></div>
+        <div class="nav-dot" data-slide="7"></div>
+        <div class="nav-dot" data-slide="8"></div>
+        <div class="nav-dot" data-slide="9"></div>
+        <div class="nav-dot" data-slide="10"></div>
+        <div class="nav-dot" data-slide="11"></div>
+        <div class="nav-dot" data-slide="12"></div>
+        <div class="nav-dot" data-slide="13"></div>
+        <div class="nav-dot" data-slide="14"></div>
+        <div class="nav-dot" data-slide="15"></div>
+        <div class="nav-dot" data-slide="16"></div>
+        <div class="nav-dot" data-slide="17"></div>
+        <div class="nav-dot" data-slide="18"></div>
+        <div class="nav-dot" data-slide="19"></div>
+        <div class="nav-dot" data-slide="20"></div>
+        <div class="nav-dot" data-slide="21"></div>
+        <div class="nav-dot" data-slide="22"></div>
+        <div class="nav-dot" data-slide="23"></div>
+        <div class="nav-dot" data-slide="24"></div>
+        <div class="nav-dot" data-slide="25"></div>
+        <div class="nav-dot" data-slide="26"></div>
+        <div class="nav-dot" data-slide="27"></div>
+        <div class="nav-dot" data-slide="28"></div>
+        <div class="nav-dot" data-slide="29"></div>
+        <div class="nav-dot" data-slide="30"></div>
+    </div>
+
+    <div class="nav-arrows">
+        <button class="nav-arrow" id="prevBtn">&#8592;</button>
+        <button class="nav-arrow" id="nextBtn">&#8594;</button>
+    </div>
+
+    <div class="slide-counter">
+        <span id="currentSlide">01</span> / <span id="totalSlides">10</span>
+    </div>
+
+    <div class="page-footer" id="pageFooter">
+        <span class="footer-uni">University of Stuttgart, IAS</span>
+        <span class="footer-date">May 18, 2026</span>
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.slide');
+        const dots = document.querySelectorAll('.nav-dot');
+        let currentSlide = 0;
+        const totalSlides = slides.length;
+
+        document.getElementById('totalSlides').textContent = String(totalSlides).padStart(2, '0');
+
+        function showSlide(index) {
+            slides.forEach((slide, i) => {
+                slide.classList.toggle('active', i === index);
+            });
+            dots.forEach((dot, i) => {
+                dot.classList.toggle('active', i === index);
+            });
+            document.getElementById('currentSlide').textContent = String(index + 1).padStart(2, '0');
+            const footer = document.getElementById('pageFooter');
+            const counter = document.querySelector('.slide-counter');
+            const isCover = slides[index].classList.contains('slide-title');
+            const isDivider = slides[index].classList.contains('slide-divider');
+            const hideChrome = isCover || isDivider;
+            footer.style.display = hideChrome ? 'none' : 'flex';
+            counter.style.display = hideChrome ? 'none' : 'block';
+            currentSlide = index;
+        }
+
+        function nextSlide() {
+            const next = (currentSlide + 1) % totalSlides;
+            showSlide(next);
+        }
+
+        function prevSlide() {
+            const prev = (currentSlide - 1 + totalSlides) % totalSlides;
+            showSlide(prev);
+        }
+
+        document.getElementById('nextBtn').addEventListener('click', nextSlide);
+        document.getElementById('prevBtn').addEventListener('click', prevSlide);
+
+        dots.forEach(dot => {
+            dot.addEventListener('click', () => {
+                showSlide(parseInt(dot.dataset.slide));
+            });
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                e.preventDefault();
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                e.preventDefault();
+                prevSlide();
+            }
+        });
+
+    </script>
+</body>
+</html>

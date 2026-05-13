@@ -1,0 +1,5 @@
+templates/
+assets/demos/*.mp4
+assets/demos/*.gif
+*.bak
+.DS_Store
