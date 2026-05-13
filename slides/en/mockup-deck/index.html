@@ -1158,6 +1158,36 @@
             color: var(--text-secondary);
         }
         .fw-body p .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--text-primary); }
+        /* --- Full System in Operation (joint task+backup) -------------- */
+        .slide-joint-op .content {
+            display: flex; flex-direction: column; justify-content: center; height: 100%;
+            padding: 3vh 4vw 7vh 4vw; gap: 2vh;
+        }
+        .jo-head .label {
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; letter-spacing: 0.22em;
+            text-transform: uppercase; color: var(--accent); margin-bottom: 1.2vh;
+        }
+        .jo-headline {
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.95vw;
+            line-height: 1.2; color: var(--text-primary);
+        }
+        .jo-headline em { font-style: italic; font-weight: 400; }
+        .jo-video-wrap { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: center; }
+        .jo-video {
+            max-width: 100%; max-height: 64vh; width: auto; height: auto;
+            object-fit: contain; border: 1px solid var(--line); border-left: 2px solid var(--text-primary);
+            background: var(--bg-secondary);
+        }
+        .jo-caption {
+            font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 300; line-height: 1.5;
+            color: var(--text-primary); text-align: center; padding-top: 1.2vh; border-top: 1px solid var(--line);
+        }
+        .jo-caption em { font-family: 'Playfair Display', serif; font-style: italic; color: var(--text-primary); }
+        .jo-kicker {
+            font-family: 'Playfair Display', serif; font-style: italic; font-size: 1.4rem;
+            color: var(--accent); margin-right: 0.6vw;
+        }
+
         /* --- Thank you (closing, Uni Stuttgart format) ----------------- */
         .slide-thanks {
             justify-content: center;
@@ -4477,6 +4507,23 @@
             </div>
         </div>
 
+        <!-- ═══════ SLIDE · FULL SYSTEM IN OPERATION (task + backup joint) ═ -->
+        <div class="slide slide-joint-op">
+            <div class="content">
+                <div class="jo-head">
+                    <div class="label">§ 5 · Real-Robot Results · Full System in Operation</div>
+                    <h2 class="jo-headline">Task policy under random bias + <em>backup safety layer</em></h2>
+                </div>
+                <div class="jo-video-wrap">
+                    <video class="jo-video" src="../../../videos/pickup_joint_operation.mp4" controls loop muted playsinline></video>
+                </div>
+                <div class="jo-caption">
+                    <span class="jo-kicker">&middot;</span>
+                    <em>pickup</em> task under random J1 encoder bias. When a hand approaches, the Hierarchical Supervisor switches to <em>backup</em>; HOMING resets the TCP to the BACKUP-entry pose and the task policy resumes &mdash; same episode, no manual intervention.
+                </div>
+            </div>
+        </div>
+
         <!-- ═══════ DIVIDER · § 6 CONCLUSION & FUTURE WORK ══════════════════ -->
         <div class="slide slide-divider">
             <div class="divider-content">
@@ -4613,6 +4660,7 @@
         <div class="nav-dot" data-slide="28"></div>
         <div class="nav-dot" data-slide="29"></div>
         <div class="nav-dot" data-slide="30"></div>
+        <div class="nav-dot" data-slide="31"></div>
     </div>
 
     <div class="nav-arrows">
