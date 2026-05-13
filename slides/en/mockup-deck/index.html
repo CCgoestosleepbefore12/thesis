@@ -1818,21 +1818,14 @@
             background: var(--bg-secondary);
             border: 1px solid var(--line);
             border-left: 2px solid var(--text-primary);
+            overflow: hidden;
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 1vh;
         }
-        .sup-video-play {
-            font-size: 2.4rem;
-            color: var(--accent);
-        }
-        .sup-video-note {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.85rem;
-            font-style: italic;
-            color: var(--text-secondary);
+        .sup-video-el {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            display: block;
         }
         .sup-conclusion {
             font-family: 'Inter', sans-serif;
@@ -4059,8 +4052,7 @@
                   <div class="sup-video">
                     <div class="sup-video-label">FSM in action (real robot)</div>
                     <div class="sup-video-box">
-                        <span class="sup-video-play">&#9654;</span>
-                        <span class="sup-video-note">video to be added</span>
+                        <video class="sup-video-el" src="../../../videos/fsm_real.mp4" controls loop muted playsinline></video>
                     </div>
                   </div>
                 </div>
