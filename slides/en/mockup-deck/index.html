@@ -3383,6 +3383,58 @@
             gap: 1.8vh;
             margin-bottom: 2vh;
         }
+        .matrix-grid {
+            display: grid;
+            grid-template-columns: 14vw 1fr 1fr 1fr;
+            gap: 0.8vh 1.4vw;
+            align-items: center;
+            justify-items: center;
+        }
+        .matrix-grid .mg-blank { }
+        .matrix-grid .mg-video-cell {
+            display: flex; flex-direction: column; gap: 0.5vh; align-items: center;
+        }
+        .matrix-grid .mg-task-head {
+            font-family: 'Playfair Display', serif;
+            font-style: italic;
+            font-size: 1.05rem;
+            color: var(--text-secondary);
+        }
+        .matrix-grid .mg-video {
+            height: 26vh;
+            width: auto;
+            aspect-ratio: 9 / 16;
+            object-fit: cover;
+            background: var(--bg-secondary);
+            border: 1px solid var(--line);
+            border-left: 2px solid var(--text-primary);
+            display: block;
+        }
+        .matrix-grid .mg-cond {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+            text-align: right;
+            justify-self: end;
+            padding-right: 1vw;
+            border-right: 1px solid var(--line);
+            width: 100%;
+        }
+        .matrix-grid .mg-x { color: #b8553e; font-weight: 600; }
+        .matrix-grid .mg-c { color: var(--accent); font-weight: 600; }
+        .matrix-grid .mg-data {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 1.3vw;
+            color: var(--text-primary);
+            padding: 0.6vh 1.2vw;
+            text-align: center;
+            min-width: 5vw;
+        }
+        .matrix-grid .mg-data.bad { color: #b8553e; }
+        .matrix-grid .mg-data.good {
+            background: var(--bg-secondary);
+            font-weight: 700;
+        }
         .matrix-table {
             width: 100%;
             border-collapse: collapse;
@@ -4471,63 +4523,32 @@
                     <div class="label">§ Real-Robot Results · Main Finding</div>
                     <h2>Train &times; Test Bias Success-Rate Matrix — <em>random-bias training</em> is necessary, sufficient, and side-effect-free</h2>
                 </div>
-                <div class="matrix-wrap">
-                    <table class="matrix-table">
-                        <thead>
-                            <tr>
-                                <th rowspan="2" class="th-task">Task<br/><span class="th-meta">N = 10</span></th>
-                                <th colspan="2" class="th-group">Trained <em>without</em> bias</th>
-                                <th colspan="2" class="th-group">Trained <em>with</em> bias</th>
-                            </tr>
-                            <tr>
-                                <th class="th-sub">Test no-bias</th>
-                                <th class="th-sub">Test w/ bias</th>
-                                <th class="th-sub">Test no-bias</th>
-                                <th class="th-sub">Test w/ bias</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td class="td-task">wipe</td>
-                                <td>10/10</td>
-                                <td class="td-bad">4/10</td>
-                                <td>10/10</td>
-                                <td class="td-good">8/10</td>
-                            </tr>
-                            <tr>
-                                <td class="td-task">pickup</td>
-                                <td>8/10</td>
-                                <td class="td-bad">3/10</td>
-                                <td>8/10</td>
-                                <td class="td-good">6/10</td>
-                            </tr>
-                            <tr>
-                                <td class="td-task">pickandplace</td>
-                                <td>7/10</td>
-                                <td class="td-bad">2/10</td>
-                                <td>7/10</td>
-                                <td class="td-good">5/10</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <div class="matrix-demos">
-                        <div class="demo-col-head">Col 4 · robust (real robot) — one example per task</div>
-                        <div class="demo-row">
-                            <div class="demo-thumb good">
-                                <span class="demo-task">wipe</span>
-                                <video class="demo-video" src="../../../videos/wipe.mp4" controls loop muted playsinline></video>
-                            </div>
-                            <div class="demo-thumb good">
-                                <span class="demo-task">pickup</span>
-                                <video class="demo-video" src="../../../videos/pickupSponge.mp4" controls loop muted playsinline></video>
-                            </div>
-                            <div class="demo-thumb good">
-                                <span class="demo-task">pickandplace</span>
-                                <video class="demo-video" src="../../../videos/pickandplace.mp4" controls loop muted playsinline></video>
-                            </div>
-                        </div>
+                <div class="matrix-grid">
+                    <div class="mg-blank"></div>
+                    <div class="mg-video-cell">
+                        <div class="mg-task-head">wipe</div>
+                        <video class="mg-video" src="../../../videos/wipe.mp4" controls loop muted playsinline></video>
                     </div>
+                    <div class="mg-video-cell">
+                        <div class="mg-task-head">pickup</div>
+                        <video class="mg-video" src="../../../videos/pickupSponge.mp4" controls loop muted playsinline></video>
+                    </div>
+                    <div class="mg-video-cell">
+                        <div class="mg-task-head">pickandplace</div>
+                        <video class="mg-video" src="../../../videos/pickandplace.mp4" controls loop muted playsinline></video>
+                    </div>
+
+                    <div class="mg-cond">train <span class="mg-x">&#10007;</span> &middot; test <span class="mg-x">&#10007;</span></div>
+                    <div class="mg-data">10/10</div><div class="mg-data">8/10</div><div class="mg-data">7/10</div>
+
+                    <div class="mg-cond">train <span class="mg-x">&#10007;</span> &middot; test <span class="mg-c">&#10003;</span></div>
+                    <div class="mg-data bad">4/10</div><div class="mg-data bad">3/10</div><div class="mg-data bad">2/10</div>
+
+                    <div class="mg-cond">train <span class="mg-c">&#10003;</span> &middot; test <span class="mg-x">&#10007;</span></div>
+                    <div class="mg-data">10/10</div><div class="mg-data">8/10</div><div class="mg-data">7/10</div>
+
+                    <div class="mg-cond">train <span class="mg-c">&#10003;</span> &middot; test <span class="mg-c">&#10003;</span></div>
+                    <div class="mg-data good">8/10</div><div class="mg-data good">6/10</div><div class="mg-data good">5/10</div>
                 </div>
                 <div class="matrix-obs">
                     <div class="obs-item"><span class="obs-num">1</span><span><em>Col 1&rarr;2 collapse</em> — clean-trained policy drops 50%+ under bias</span></div>
