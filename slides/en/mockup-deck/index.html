@@ -4679,26 +4679,12 @@
                     <div class="fw-item">
                         <div class="fw-num">2</div>
                         <div class="fw-body">
-                            <div class="fw-title">Explicit bias estimator</div>
-                            <p>Online least-squares from the Jacobian (short-term) or an RMA-style GRU over action-state history (mid-term) &rarr; feed <span class="mono">b&#770;</span> directly to the policy.</p>
-                        </div>
-                    </div>
-                    <div class="fw-item">
-                        <div class="fw-num">3</div>
-                        <div class="fw-body">
-                            <div class="fw-title">Residual RL &amp; offline RL real-robot comparison</div>
-                            <p>Residual RL (base controller + RL residual) and offline RL (IQL / CQL on demos) as baselines &mdash; quantify the boundary of the paradigm-choice principle.</p>
-                        </div>
-                    </div>
-                    <div class="fw-item">
-                        <div class="fw-num">4</div>
-                        <div class="fw-body">
                             <div class="fw-title">Multi-joint / time-varying bias &amp; other faults</div>
                             <p>Coupled multi-joint bias, thermal drift, encoder noise, joint jam, actuator degradation &mdash; map the framework's range of applicability.</p>
                         </div>
                     </div>
                     <div class="fw-item fw-item-full">
-                        <div class="fw-num">5</div>
+                        <div class="fw-num">3</div>
                         <div class="fw-body">
                             <div class="fw-title">Long-horizon orchestration via foundation models</div>
                             <p>Currently <em>pickup / wipe / pickandplace</em> are three independent short-horizon tasks. Use a VLM / LLM as a high-level planner to chain them into one long-horizon task &mdash; e.g. "clean the desk" = pickup &rarr; wipe &rarr; place-back. The bias-robust short-horizon policies become primitives in a foundation-model orchestration loop.</p>
