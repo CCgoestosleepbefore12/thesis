@@ -3451,45 +3451,48 @@
         }
 
         .matrix-demos {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.8vh 0.6vw;
-            align-content: start;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6vh;
+            min-height: 0;
         }
         .demo-col-head {
             font-family: 'Inter', sans-serif;
-            font-size: 0.66rem;
+            font-size: 0.7rem;
             letter-spacing: 0.16em;
             text-transform: uppercase;
             color: var(--text-secondary);
             text-align: center;
-            padding-bottom: 0.6vh;
+            padding-bottom: 0.4vh;
             border-bottom: 1px solid var(--line);
         }
         .demo-thumb {
-            aspect-ratio: 16 / 10;
+            flex: 1;
+            min-height: 0;
             background: var(--bg-secondary);
             border: 1px solid var(--line);
             position: relative;
-            padding: 0.6vh 0.6vw;
+            overflow: hidden;
         }
         .demo-thumb.bad { border-left: 2px solid #b8553e; }
         .demo-thumb.good { border-left: 2px solid var(--text-primary); }
         .demo-task {
+            position: absolute;
+            top: 0.4vh; left: 0.5vw;
+            background: rgba(237, 232, 224, 0.85);
+            padding: 0.2vh 0.6vw;
+            z-index: 2;
             font-family: 'Inter', sans-serif;
-            font-size: 0.62rem;
+            font-size: 0.65rem;
             letter-spacing: 0.12em;
             text-transform: uppercase;
-            color: var(--text-secondary);
+            color: var(--text-primary);
+            font-weight: 500;
         }
-        .demo-play {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            font-family: 'Inter', sans-serif;
-            font-size: 1.4rem;
-            color: var(--accent);
+        .demo-video {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
         }
 
         .matrix-obs {
@@ -4503,14 +4506,19 @@
                     </table>
 
                     <div class="matrix-demos">
-                        <div class="demo-col-head">Col 2 · collapse</div>
-                        <div class="demo-col-head">Col 4 · robust</div>
-                        <div class="demo-thumb bad"><span class="demo-task">wipe</span><span class="demo-play">▶</span></div>
-                        <div class="demo-thumb good"><span class="demo-task">wipe</span><span class="demo-play">▶</span></div>
-                        <div class="demo-thumb bad"><span class="demo-task">pickup</span><span class="demo-play">▶</span></div>
-                        <div class="demo-thumb good"><span class="demo-task">pickup</span><span class="demo-play">▶</span></div>
-                        <div class="demo-thumb bad"><span class="demo-task">p&amp;p</span><span class="demo-play">▶</span></div>
-                        <div class="demo-thumb good"><span class="demo-task">p&amp;p</span><span class="demo-play">▶</span></div>
+                        <div class="demo-col-head">Col 4 · robust (real robot)</div>
+                        <div class="demo-thumb good">
+                            <span class="demo-task">wipe</span>
+                            <video class="demo-video" src="../../../videos/wipe.mp4" controls loop muted playsinline></video>
+                        </div>
+                        <div class="demo-thumb good">
+                            <span class="demo-task">pickup</span>
+                            <video class="demo-video" src="../../../videos/pickupSponge.mp4" controls loop muted playsinline></video>
+                        </div>
+                        <div class="demo-thumb good">
+                            <span class="demo-task">pickandplace</span>
+                            <video class="demo-video" src="../../../videos/pickandplace.mp4" controls loop muted playsinline></video>
+                        </div>
                     </div>
                 </div>
                 <div class="matrix-obs">
