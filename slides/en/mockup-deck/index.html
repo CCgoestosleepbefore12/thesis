@@ -1139,8 +1139,9 @@
             line-height: 1.2; color: var(--text-primary);
         }
         .fw-headline em { font-style: italic; font-weight: 400; }
-        .fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.4vh 2vw; }
+        .fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2vh 2vw; }
         .fw-item { display: flex; align-items: baseline; gap: 1vw; }
+        .fw-item-full { grid-column: 1 / -1; }
         .fw-num {
             font-family: 'Playfair Display', serif; font-style: italic; font-weight: 400;
             font-size: 1.5rem; color: var(--accent); flex-shrink: 0; min-width: 1.6rem;
@@ -4694,6 +4695,13 @@
                         <div class="fw-body">
                             <div class="fw-title">Multi-joint / time-varying bias &amp; other faults</div>
                             <p>Coupled multi-joint bias, thermal drift, encoder noise, joint jam, actuator degradation &mdash; map the framework's range of applicability.</p>
+                        </div>
+                    </div>
+                    <div class="fw-item fw-item-full">
+                        <div class="fw-num">5</div>
+                        <div class="fw-body">
+                            <div class="fw-title">Long-horizon orchestration via foundation models</div>
+                            <p>Currently <em>pickup / wipe / pickandplace</em> are three independent short-horizon tasks. Use a VLM / LLM as a high-level planner to chain them into one long-horizon task &mdash; e.g. "clean the desk" = pickup &rarr; wipe &rarr; place-back. The bias-robust short-horizon policies become primitives in a foundation-model orchestration loop.</p>
                         </div>
                     </div>
                 </div>
