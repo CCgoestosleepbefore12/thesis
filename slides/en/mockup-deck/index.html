@@ -1139,26 +1139,27 @@
             line-height: 1.2; color: var(--text-primary);
         }
         .fw-headline em { font-style: italic; font-weight: 400; }
-        .fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.2vh 2vw; }
-        .fw-item { display: flex; align-items: baseline; gap: 1vw; }
-        .fw-item-full { grid-column: 1 / -1; }
+        .fw-grid { display: flex; flex-direction: column; gap: 1.8vh; }
+        .fw-item { display: flex; align-items: baseline; gap: 1.4vw; }
+        .fw-item-full { /* no-op now that grid is single-column */ }
         .fw-num {
             font-family: 'Playfair Display', serif; font-style: italic; font-weight: 400;
-            font-size: 1.5rem; color: var(--accent); flex-shrink: 0; min-width: 1.6rem;
+            font-size: 2.2rem; color: var(--accent); flex-shrink: 0; min-width: 2.2rem;
         }
         .fw-title {
-            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1rem;
-            color: var(--text-primary); margin-bottom: 0.3vh;
+            font-family: 'Playfair Display', serif; font-weight: 600; font-size: 1.4rem;
+            color: var(--text-primary); margin-bottom: 0.5vh;
         }
         .fw-most {
-            font-family: 'Inter', sans-serif; font-size: 0.68rem; letter-spacing: 0.1em;
+            font-family: 'Inter', sans-serif; font-size: 0.78rem; letter-spacing: 0.12em;
             text-transform: uppercase; color: var(--accent); margin-left: 0.6vw; font-weight: 600;
         }
         .fw-body p {
-            font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 300; line-height: 1.45;
+            font-family: 'Inter', sans-serif; font-size: 1.05rem; font-weight: 300; line-height: 1.55;
             color: var(--text-secondary);
         }
-        .fw-body p .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--text-primary); }
+        .fw-body p em { font-family: 'Playfair Display', serif; font-style: italic; color: var(--text-primary); }
+        .fw-body p .mono { font-family: 'IBM Plex Mono', monospace; font-size: 0.95rem; color: var(--text-primary); }
         /* --- Full System in Operation (joint task+backup) -------------- */
         .slide-joint-op .content {
             display: flex; flex-direction: column; justify-content: center; height: 100%;
