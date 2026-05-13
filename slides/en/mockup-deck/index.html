@@ -1172,11 +1172,26 @@
             line-height: 1.2; color: var(--text-primary);
         }
         .jo-headline em { font-style: italic; font-weight: 400; }
-        .jo-video-wrap { flex: 1 1 auto; min-height: 0; display: flex; justify-content: center; align-items: center; }
-        .jo-video {
-            max-width: 100%; max-height: 64vh; width: auto; height: auto;
-            object-fit: contain; border: 1px solid var(--line); border-left: 2px solid var(--text-primary);
+        .jo-video-grid {
+            flex: 1 1 auto; min-height: 0;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 1.6vw;
+            align-items: stretch;
+        }
+        .jo-video-cell { display: flex; flex-direction: column; gap: 0.8vh; min-width: 0; }
+        .jo-video-cell-label {
+            font-family: 'Inter', sans-serif; font-size: 0.78rem; letter-spacing: 0.16em;
+            text-transform: uppercase; color: var(--accent);
+        }
+        .jo-video-box {
+            flex: 1; aspect-ratio: 16 / 9;
             background: var(--bg-secondary);
+            border: 1px solid var(--line); border-left: 2px solid var(--text-primary);
+            overflow: hidden; display: flex;
+        }
+        .jo-video-el {
+            width: 100%; height: 100%;
+            object-fit: contain;
+            display: block;
         }
         .jo-caption {
             font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 300; line-height: 1.5;
@@ -4514,8 +4529,19 @@
                     <div class="label">§ 5 · Real-Robot Results · Full System in Operation</div>
                     <h2 class="jo-headline">Task policy under random bias + <em>backup safety layer</em></h2>
                 </div>
-                <div class="jo-video-wrap">
-                    <video class="jo-video" src="../../../videos/pickup_joint_operation_cropped.mp4" controls loop muted playsinline></video>
+                <div class="jo-video-grid">
+                    <div class="jo-video-cell">
+                        <div class="jo-video-cell-label">Monitor view</div>
+                        <div class="jo-video-box">
+                            <video class="jo-video-el" src="../../../videos/pickup_joint_operation_cropped.mp4" controls loop muted playsinline></video>
+                        </div>
+                    </div>
+                    <div class="jo-video-cell">
+                        <div class="jo-video-cell-label">Real-robot view</div>
+                        <div class="jo-video-box">
+                            <video class="jo-video-el" src="../../../videos/pickup_randomBias_backup.mp4" controls loop muted playsinline></video>
+                        </div>
+                    </div>
                 </div>
                 <div class="jo-caption">
                     <span class="jo-kicker">&middot;</span>
