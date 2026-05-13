@@ -3383,24 +3383,63 @@
             gap: 1.8vh;
             margin-bottom: 2vh;
         }
-        .matrix-grid {
-            display: grid;
-            grid-template-columns: 14vw 1fr 1fr 1fr;
-            gap: 0.8vh 1.4vw;
-            align-items: center;
-            justify-items: center;
+        .matrix-row {
+            display: flex; flex-direction: row;
+            gap: 1.4vw;
+            justify-content: center;
+            align-items: stretch;
         }
-        .matrix-grid .mg-blank { }
-        .matrix-grid .mg-video-cell {
-            display: flex; flex-direction: column; gap: 0.5vh; align-items: center;
+        .matrix-cell {
+            display: flex; flex-direction: column;
+            gap: 0.6vh; align-items: center;
         }
-        .matrix-grid .mg-task-head {
+        .mt-title {
             font-family: 'Playfair Display', serif;
             font-style: italic;
-            font-size: 1.05rem;
+            font-size: 1rem;
             color: var(--text-secondary);
         }
-        .matrix-grid .mg-video {
+        .mt-meta { font-family: 'IBM Plex Mono', monospace; font-size: 0.78rem; color: var(--accent); font-style: normal; }
+        .matrix-cell-table .mt-grid {
+            display: grid;
+            grid-template-columns: auto auto auto auto;
+            gap: 0.5vh 0.6vw;
+            background: var(--bg-secondary);
+            border-left: 2px solid var(--text-primary);
+            padding: 1.4vh 1vw;
+            align-items: center;
+            height: 26vh;
+            box-sizing: border-box;
+        }
+        .matrix-cell-table .mt-h, .matrix-cell-table .mt-h-cond {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.66rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--accent);
+            text-align: center;
+            border-bottom: 1px solid var(--line);
+            padding-bottom: 0.3vh;
+        }
+        .matrix-cell-table .mt-cond {
+            font-family: 'Inter', sans-serif;
+            font-size: 0.76rem;
+            color: var(--text-secondary);
+            text-align: right;
+            white-space: nowrap;
+        }
+        .matrix-cell-table .mt-x { color: #b8553e; font-weight: 600; }
+        .matrix-cell-table .mt-c { color: var(--accent); font-weight: 600; }
+        .matrix-cell-table .mt-d {
+            font-family: 'IBM Plex Mono', monospace;
+            font-size: 0.92rem;
+            color: var(--text-primary);
+            text-align: center;
+            padding: 0.2vh 0.4vw;
+        }
+        .matrix-cell-table .mt-d.bad { color: #b8553e; }
+        .matrix-cell-table .mt-d.good { background: var(--bg-primary); font-weight: 700; }
+        .matrix-cell-video .mt-vid {
             height: 26vh;
             width: auto;
             aspect-ratio: 9 / 16;
@@ -3409,31 +3448,6 @@
             border: 1px solid var(--line);
             border-left: 2px solid var(--text-primary);
             display: block;
-        }
-        .matrix-grid .mg-cond {
-            font-family: 'Inter', sans-serif;
-            font-size: 0.88rem;
-            color: var(--text-secondary);
-            text-align: right;
-            justify-self: end;
-            padding-right: 1vw;
-            border-right: 1px solid var(--line);
-            width: 100%;
-        }
-        .matrix-grid .mg-x { color: #b8553e; font-weight: 600; }
-        .matrix-grid .mg-c { color: var(--accent); font-weight: 600; }
-        .matrix-grid .mg-data {
-            font-family: 'IBM Plex Mono', monospace;
-            font-size: 1.3vw;
-            color: var(--text-primary);
-            padding: 0.6vh 1.2vw;
-            text-align: center;
-            min-width: 5vw;
-        }
-        .matrix-grid .mg-data.bad { color: #b8553e; }
-        .matrix-grid .mg-data.good {
-            background: var(--bg-secondary);
-            font-weight: 700;
         }
         .matrix-table {
             width: 100%;
@@ -4523,32 +4537,40 @@
                     <div class="label">§ Real-Robot Results · Main Finding</div>
                     <h2>Train &times; Test Bias Success-Rate Matrix — <em>random-bias training</em> is necessary, sufficient, and side-effect-free</h2>
                 </div>
-                <div class="matrix-grid">
-                    <div class="mg-blank"></div>
-                    <div class="mg-video-cell">
-                        <div class="mg-task-head">wipe</div>
-                        <video class="mg-video" src="../../../videos/wipe.mp4" controls loop muted playsinline></video>
+                <div class="matrix-row">
+                    <div class="matrix-cell matrix-cell-table">
+                        <div class="mt-title">Success rate &middot; <span class="mt-meta">N=10</span></div>
+                        <div class="mt-grid">
+                            <div class="mt-h-cond"></div>
+                            <div class="mt-h">wipe</div>
+                            <div class="mt-h">pickup</div>
+                            <div class="mt-h">p&amp;p</div>
+
+                            <div class="mt-cond">train <span class="mt-x">&#10007;</span> test <span class="mt-x">&#10007;</span></div>
+                            <div class="mt-d">10/10</div><div class="mt-d">8/10</div><div class="mt-d">7/10</div>
+
+                            <div class="mt-cond">train <span class="mt-x">&#10007;</span> test <span class="mt-c">&#10003;</span></div>
+                            <div class="mt-d bad">4/10</div><div class="mt-d bad">3/10</div><div class="mt-d bad">2/10</div>
+
+                            <div class="mt-cond">train <span class="mt-c">&#10003;</span> test <span class="mt-x">&#10007;</span></div>
+                            <div class="mt-d">10/10</div><div class="mt-d">8/10</div><div class="mt-d">7/10</div>
+
+                            <div class="mt-cond">train <span class="mt-c">&#10003;</span> test <span class="mt-c">&#10003;</span></div>
+                            <div class="mt-d good">8/10</div><div class="mt-d good">6/10</div><div class="mt-d good">5/10</div>
+                        </div>
                     </div>
-                    <div class="mg-video-cell">
-                        <div class="mg-task-head">pickup</div>
-                        <video class="mg-video" src="../../../videos/pickupSponge.mp4" controls loop muted playsinline></video>
+                    <div class="matrix-cell matrix-cell-video">
+                        <div class="mt-title">wipe</div>
+                        <video class="mt-vid" src="../../../videos/wipe.mp4" controls loop muted playsinline></video>
                     </div>
-                    <div class="mg-video-cell">
-                        <div class="mg-task-head">pickandplace</div>
-                        <video class="mg-video" src="../../../videos/pickandplace.mp4" controls loop muted playsinline></video>
+                    <div class="matrix-cell matrix-cell-video">
+                        <div class="mt-title">pickup</div>
+                        <video class="mt-vid" src="../../../videos/pickupSponge.mp4" controls loop muted playsinline></video>
                     </div>
-
-                    <div class="mg-cond">train <span class="mg-x">&#10007;</span> &middot; test <span class="mg-x">&#10007;</span></div>
-                    <div class="mg-data">10/10</div><div class="mg-data">8/10</div><div class="mg-data">7/10</div>
-
-                    <div class="mg-cond">train <span class="mg-x">&#10007;</span> &middot; test <span class="mg-c">&#10003;</span></div>
-                    <div class="mg-data bad">4/10</div><div class="mg-data bad">3/10</div><div class="mg-data bad">2/10</div>
-
-                    <div class="mg-cond">train <span class="mg-c">&#10003;</span> &middot; test <span class="mg-x">&#10007;</span></div>
-                    <div class="mg-data">10/10</div><div class="mg-data">8/10</div><div class="mg-data">7/10</div>
-
-                    <div class="mg-cond">train <span class="mg-c">&#10003;</span> &middot; test <span class="mg-c">&#10003;</span></div>
-                    <div class="mg-data good">8/10</div><div class="mg-data good">6/10</div><div class="mg-data good">5/10</div>
+                    <div class="matrix-cell matrix-cell-video">
+                        <div class="mt-title">pickandplace</div>
+                        <video class="mt-vid" src="../../../videos/pickandplace.mp4" controls loop muted playsinline></video>
+                    </div>
                 </div>
                 <div class="matrix-obs">
                     <div class="obs-item"><span class="obs-num">1</span><span><em>Col 1&rarr;2 collapse</em> — clean-trained policy drops 50%+ under bias</span></div>
