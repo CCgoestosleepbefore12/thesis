@@ -1,0 +1,423 @@
+% 第3章 编码器偏差建模与POMDP形式化
+
+\chapter{编码器偏差建模与POMDP形式化}\label{ch:problem_formulation}
+
+\section{工业机器人编码器校准偏差}\label{sec:bias_sources}
+
+串联型工业机器人的闭环控制依赖于每个关节的角度反馈。无论是低层的关节伺服控制器、笛卡尔空间的阻抗/导纳控制器，还是上层任务规划，都需要以关节编码器测得的角度 $\vect{q}_{\text{measured}}$ 作为输入，并通过正运动学（Forward Kinematics，FK）与雅可比矩阵 $\mat{J}(\vect{q})$ 建立关节空间与任务空间的联系~\cite{siciliano2010robotics}。在理想情况下，编码器读数等于真实关节角度（$\vect{q}_{\text{measured}} = \vect{q}_{\text{true}}$），此时控制器的力矩计算与观测模块的末端位姿估计均建立在准确的状态信息之上。然而，真实工业环境下该假设常常被破坏：编码器与真实关节之间可能存在一个系统性偏差 $\vect{b} \in \real^7$，使得
+\begin{equation}
+  \vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}.
+  \label{eq:encoder_bias}
+\end{equation}
+由于机器人的控制与观测共享同一个编码器读数，偏差 $\vect{b}$ 会同时污染控制回路与状态观测，这一点将在\cref{sec:causal_chain} 中详细分析。
+
+\subsection*{编码器偏差的五种来源}
+
+编码器校准偏差在工业实践中可由多种物理机制导致。ISO 9283:1998~\cite{iso9283} 为工业机器人位姿准确度、重复性和漂移等性能特征提供了标准化测试方法，其中明确列出了位姿漂移和交换性等指标，反映出上述偏差在真实部署中的普遍性。以下依时间尺度与物理机制对这些来源进行分类，并给出可从现有文献或工程实践中获得的代表性量级。
+
+\begin{enumerate}
+  \item \textbf{出厂标定残差}：即使经过严格的运动学参数辨识，受限于标定设备精度与运动学模型的简化，出厂标定后的关节零位仍会残留微小偏差。作为具体参考，Kana~等~\cite{kana2022fast} 在 Kinova Gen3 七自由度机械臂上进行运动学再标定，报告的七个关节角度零偏量分布于区间 $[-0.0084,\,0.0088]$\,rad，大致对应 $0.5°$ 量级。这是本文五种来源中\emph{唯一}具有直接实证量级支撑的一类。
+
+  \item \textbf{温度漂移}：机械臂长时间运行后，电机、减速器与连杆因发热产生热膨胀，引起末端位姿缓慢漂移。Gong~等~\cite{gong2000nongeometric} 通过激光跟踪仪的逆标定建模了工业机器人中的几何、刚度与时变热误差三者耦合的影响；Vocetka~等~\cite{vocetka2021influence} 进一步量化了漂移对重复性的影响并给出补偿方法。现有文献通常将温漂效应报告为任务空间的位姿误差（毫米量级），回推至关节空间则大约处于 $10^{-3}$--$10^{-2}$\,rad 范围，数量级上远小于后述几类故障。
+
+  \item \textbf{更换电机或减速器未重新标定}：维护作业中若未对替换部件进行零位重标（例如未执行 KUKA 的"mastering"或 Franka 的零位复位流程），将引入固定偏差。例如在典型的谐波减速器（减速比 $100$--$160$）中，\emph{一个输入齿的错位}即可在输出端造成约 $0.04$\,rad 的偏差，而耦合器重装或皮带张紧变化的影响则可进一步叠加。由于这类偏差取决于具体维护操作，学术文献中缺乏统计报告，本文将其视为\emph{工程估计}而非实证量级，可能的幅值范围约为 $0.05$--$0.3$\,rad 量级。
+
+  \item \textbf{碰撞后编码器错位}：意外碰撞可能导致关节编码器、谐波减速器或耦合器相对位置突变，产生突发性偏差。Haddadin~等~\cite{haddadin2017robot} 对机器人碰撞的检测、隔离与辨识进行了系统综述，但该领域文献主要关注\emph{检测和恢复}而非碰撞后残留偏差的量级统计。本文将碰撞导致的偏差同样视为\emph{设计包络}，可能的幅值范围视碰撞严重程度从 $0.1$\,rad 延展至更大量级。
+
+  \item \textbf{编码器噪声与电磁干扰}：现代光学编码器通过差分线驱与屏蔽设计已对电磁干扰有较强抑制。残余的测量噪声（含量化噪声）在典型 $17$--$20$ 位绝对编码器上约为 $10^{-3}$\,rad 量级，呈零均值随机性，与前四种系统性偏差在统计特征上本质不同。
+\end{enumerate}
+
+\cref{tab:bias_sources} 汇总了上述五种偏差来源的关键特征，并在表中以\emph{实证量级}与\emph{工程估计}两种类别加以区分，以明确各来源在文献支撑上的差异。
+
+\begin{table}[htbp]
+  \centering
+  \caption{编码器校准偏差的五种来源及其特征}
+  \label{tab:bias_sources}
+  \footnotesize
+  \begin{tabular}{llllc}
+    \toprule
+    来源 & 时间特征 & 类别 & 代表量级 (rad) & 本文覆盖 \\
+    \midrule
+    出厂标定残差 & 固定 & 实证量级~\cite{kana2022fast} & $\sim 10^{-3}$--$10^{-2}$ & \checkmark \\
+    温度漂移 & 缓变 & 实证量级~\cite{gong2000nongeometric,vocetka2021influence} & $\sim 10^{-3}$--$10^{-2}$ & $\times$ \\
+    更换部件未重标 & 固定 & 工程估计 & $\sim 10^{-1}$ & \checkmark \\
+    碰撞后错位 & 突变 & 设计包络~\cite{haddadin2017robot} & $\gtrsim 10^{-1}$ & \checkmark \\
+    编码器噪声/EMI & 随机 & 量化+噪声 & $\sim 10^{-3}$ & $\times$ \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection*{本文的研究范围}
+
+在上述五种来源中，本文聚焦于 \textbf{episode 内恒定的偏差}（即来源 1、3、4），涵盖两种实验设置：\emph{固定偏差}在所有 episode 中使用同一个 $\vect{b}$，对应单一已知故障；\emph{随机偏差}则在每个 episode 开始时从分布 $P(\vect{b})$ 采样，对应未知故障量级的分布。两者的共同特征是 $\vect{b}$ 在 episode 内不变，均可建模为 POMDP 的静态隐变量（详见\cref{sec:pomdp}）；而温度漂移与电磁干扰需要时变隐状态，属于本质不同的 POMDP 结构，留作未来工作。后续实验中，偏差对每个关节独立采样 $b_i \sim \mathcal{U}[0, 0.25\,\text{rad}]$（$i = 1, \dots, 7$，约 $14.3°$），有意超过出厂标定残差的典型量级（\cref{tab:bias_sources}），以覆盖维护疏漏与碰撞后错位等更严重的故障场景。
+
+针对此类偏差，现有方案如停机重新标定~\cite{kana2022fast,gong2000nongeometric} 或传统容错控制框架（FDI/FTC）~\cite{blanke2016diagnosis} 均存在明显局限——前者需要中断生产，后者依赖明确的故障模型且以"保持稳定"而非"完成任务"为目标，相关讨论详见\cref{ch:related_work}。本文采取不同的路径：与其事后检测或切换，不如让策略在训练阶段就见过各种偏差，从而学会\emph{在线适应}未知的校准偏差。后续章节将在理论与方法两个层面展开——\cref{sec:causal_chain,sec:pomdp,sec:observability} 刻画偏差对控制问题结构的本质影响，\cref{ch:task_policy} 给出具体的策略学习方法。
+
+\section{因果链：一源三效应}\label{sec:causal_chain}
+
+在\cref{sec:bias_sources} 中，我们将编码器偏差形式化为一个关节空间的加性误差 $\vect{b}$，使得
+$\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$（见~\cref{eq:encoder_bias}）。这一定义本身只刻画了"什么是偏差"，但尚未回答一个更关键的问题：\emph{一个编码器偏差如何在机器人闭环控制系统中传播，最终影响任务执行？}
+
+回答这个问题是后续 POMDP 建模（\cref{sec:pomdp}）的前提。本节将证明：\textbf{单一编码器偏差 $\vect{b}$ 会沿三条相互独立的路径产生三个可观测的效应，但这三个效应并非独立故障，而是同一隐变量在不同模块上的投影。}
+
+要理解偏差如何传播，首先梳理无偏差情况下 Franka Panda~等串联机械臂的标准控制与观测结构~\cite{siciliano2010robotics}。如\cref{fig:pipeline_ideal} 所示，机器人在一个控制周期内有三个模块显式依赖同一个编码器读数 $\vect{q}_{\text{measured}}$：\textbf{底层关节 PD 控制器}（对 Franka Panda 而言运行于其 FCI 的 $1$\,kHz 实时循环中~\cite{haddadin2022franka,frankaemika2024libfranka}）跟踪期望关节角；\textbf{任务层 OSC 控制器}通过 $\mat{J}(\vect{q}_{\text{measured}})$ 与 $\text{FK}(\vect{q}_{\text{measured}})$ 将任务空间误差映射为关节力矩；\textbf{观测模块}向上层策略返回 $\vect{q}_{\text{measured}}$ 与 $\text{FK}(\vect{q}_{\text{measured}})$。三个模块共享同一个编码器读数——这正是一个 $\vect{b}$ 能够同时污染控制与观测的结构性原因\footnote{本节假设真机使用由底层实时控制器执行的关节伺服；仿真环境中该底层循环通过直接设置初始关节位置进行简化，具体实现详见\cref{sec:sim_implementation}。}。
+
+% TODO[figure]: 后期美化此数据流图，见 docs/todo.md 第 1 项
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_3_1_pipeline_ideal.png}
+  \caption[理想情况下的控制与观测数据流]{理想情况下 Franka Panda 的控制与观测数据流。三个下游模块（底层关节 PD、任务层 OSC、观测模块）均以同一个编码器读数 $\vect{q}_{\text{measured}}$ 作为输入。这一共享依赖是编码器偏差能够同时污染控制与观测的结构性原因。}
+  \label{fig:pipeline_ideal}
+\end{figure}
+
+\subsection{效应 1：初始位置偏移}\label{subsec:effect1}
+
+在 episode 开始时，上层通常指令机器人移动到一个预设的初始位姿 $\vect{q}_{\text{home}}$。Franka Panda 的底层关节伺服可近似建模为具有重力补偿的 PD 跟踪控制器~\cite{siciliano2010robotics}：
+\begin{equation}
+  \vect{\tau}_{\text{joint}} = \mat{K}_p \big(\vect{q}_{\text{target}} - \vect{q}_{\text{measured}}\big)
+  + \mat{K}_d \big(\dot{\vect{q}}_{\text{target}} - \dot{\vect{q}}_{\text{measured}}\big)
+  + \vect{g}(\vect{q}_{\text{measured}}),
+  \label{eq:pd_law}
+\end{equation}
+其中 $\mat{K}_p, \mat{K}_d \succ 0$ 为刚度与阻尼矩阵，$\vect{g}(\cdot)$ 为重力补偿项。到 home 位姿的场景下 $\vect{q}_{\text{target}} = \vect{q}_{\text{home}}$ 为常量，因此 $\dot{\vect{q}}_{\text{target}} = \vect{0}$；当系统到达稳态时进一步有 $\dot{\vect{q}}_{\text{measured}} = \vect{0}$，且被动力矩与重力补偿抵消，(\ref{eq:pd_law}) 式化为
+\begin{equation}
+  \mat{K}_p \big(\vect{q}_{\text{target}} - \vect{q}_{\text{measured}}\big) = \vect{0}
+  \quad\Longrightarrow\quad
+  \vect{q}_{\text{measured}} = \vect{q}_{\text{target}}.
+  \label{eq:pd_steady_state}
+\end{equation}
+这正是 PD 控制器的基本性质：在稳态下\emph{测量值}等于期望值。然而 PD 控制器的反馈回路闭合于编码器读数，对物理世界中的\emph{真实}关节角是不可见的。将~\cref{eq:encoder_bias} 代入~\cref{eq:pd_steady_state}，得到：
+\begin{equation}
+  \vect{q}_{\text{true}} + \vect{b} = \vect{q}_{\text{home}}
+  \quad\Longrightarrow\quad
+  \boxed{\;\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}.\;}
+  \label{eq:effect1}
+\end{equation}
+
+\paragraph{物理含义} 机器人在数据层面\emph{认为}自己已经到达 $\vect{q}_{\text{home}}$，但物理上所有关节均存在一个大小为 $\vect{b}$、方向与偏差\emph{相反}的偏移。这一效应是"偏差从数字世界投射到物理世界"的第一步：尚未有任何控制指令被错误执行，系统却已经身处一个错误的物理状态。后续所有运动都将从这个被污染的起点出发。
+
+\subsection{效应 2：控制偏差}\label{subsec:effect2}
+
+在 episode 进行过程中，任务层 OSC 控制器将期望末端位姿 $\vect{x}_{\text{target}}$ 转换为关节力矩。标准 OSC 控制律~\cite{siciliano2010robotics,ott2008cartesian} 形式为：
+\begin{equation}
+  \vect{\tau}_{\text{osc}}(\vect{q}) = \mat{J}(\vect{q})^\top \mat{\Lambda}(\vect{q})
+    \big[\mat{K}_x \vect{e}_x(\vect{q}) + \mat{K}_v \dot{\vect{e}}_x(\vect{q})\big]
+    + \vect{\tau}_{\text{null}}(\vect{q}) + \vect{g}(\vect{q}),
+  \label{eq:osc_law}
+\end{equation}
+其中 $\vect{e}_x(\vect{q}) = \vect{x}_{\text{target}} - \text{FK}(\vect{q})$ 为任务空间位置误差，$\mat{\Lambda}(\vect{q}) = (\mat{J}(\vect{q})\mat{M}^{-1}(\vect{q})\mat{J}(\vect{q})^\top)^{-1}$ 为任务空间惯性矩阵，$\vect{\tau}_{\text{null}}$ 为零空间项，$\vect{g}$ 为重力补偿。控制律显式依赖五个以 $\vect{q}$ 为自变量的函数：$\mat{J}, \mat{\Lambda}, \text{FK}, \vect{\tau}_{\text{null}}, \vect{g}$。
+
+在存在偏差时控制器读到的是 $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$，因此实际施加的力矩为 $\vect{\tau}^{\text{biased}} = \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}} + \vect{b})$，与理想力矩 $\vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}})$ 存在差值 $\Delta\vect{\tau}(\vect{b})$。对小偏差做一阶展开：
+\begin{equation}
+  \Delta\vect{\tau}(\vect{b})
+  \;=\; \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}}+\vect{b}) - \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}})
+  \;\approx\; \left.\tfrac{\partial \vect{\tau}_{\text{osc}}}{\partial \vect{q}}\right|_{\vect{q}_{\text{true}}}\!\! \vect{b}.
+  \label{eq:tau_linearization}
+\end{equation}
+其中 $\partial \vect{\tau}_{\text{osc}}/\partial \vect{q}$ 同时包含 $\mat{J}$、$\text{FK}$、$\mat{\Lambda}$ 对关节角的变化，对任何非平凡运动学结构均不为零，因此：
+\begin{equation}
+  \forall\, \vect{b} \neq \vect{0}: \quad \Delta\vect{\tau}(\vect{b}) \neq \vect{0}.
+  \label{eq:effect2}
+\end{equation}
+
+\paragraph{物理含义} 任意非零的编码器偏差都会使控制器输出一个在大小与方向上均偏离理想值的关节力矩；一阶展开式~\cref{eq:tau_linearization} 表明力矩偏差的幅度与 $\vect{b}$ 近似成线性，方向由 OSC 控制律对 $\vect{q}$ 的梯度决定。该效应源自 $\mat{J}$ 与 $\text{FK}$ 在不同关节构型下的差异而非任何加性噪声，因此即使 $\vect{b}$ 在 episode 内恒定，力矩偏差也会在整个轨迹上持续存在。
+
+\subsection{效应 3：感知偏差}\label{subsec:effect3}
+
+上层策略 $\pi$ 依据观测函数所返回的状态 $\vect{o}$ 决定下一步动作。以 Franka Panda 的典型任务为例，观测中至少包含以下分量：
+\begin{equation}
+  \vect{o} = \big(\vect{q}_{\text{measured}},\; \dot{\vect{q}}_{\text{measured}},\; \vect{x}_{\text{ee}}^{\text{FK}},\; \cdots\big),
+  \label{eq:obs_structure}
+\end{equation}
+其中 $\vect{x}_{\text{ee}}^{\text{FK}} = \text{FK}(\vect{q}_{\text{measured}})$ 为末端执行器位置的运动学估计。将~\cref{eq:encoder_bias} 代入：
+\begin{align}
+  \vect{q}_{\text{measured}} &= \vect{q}_{\text{true}} + \vect{b}, \label{eq:obs_q_bias}\\
+  \vect{x}_{\text{ee}}^{\text{FK}} &= \text{FK}(\vect{q}_{\text{true}} + \vect{b}) \neq \text{FK}(\vect{q}_{\text{true}}).
+  \label{eq:obs_x_bias}
+\end{align}
+注意到 $\dot{\vect{q}}_{\text{measured}} = \dot{\vect{q}}_{\text{true}}$：因为 $\vect{b}$ 在一个 episode 内恒定，对时间求导后消失。因此在 episode 内，感知偏差仅作用于位置类观测（关节角和末端位置），不影响速度类观测。
+
+\paragraph{物理含义} 策略所"看到"的机器人状态在\emph{位置维度上系统性地撒谎}。两个位置类观测——$\vect{q}_{\text{measured}}$ 与 $\vect{x}_{\text{ee}}^{\text{FK}}$——表面是两条独立信息源，实际共享同一个被污染的底层变量，因此策略\emph{无法}通过比较它们来检测偏差（$\vect{x}_{\text{ee}}^{\text{FK}}$ 就是 $\vect{q}_{\text{measured}}$ 的正运动学，两者之间的任何"一致性检查"都恒为真）。这一观察将在\cref{sec:observability} 的可观测性分析中扮演核心角色。
+
+\subsection{因果链总结}\label{subsec:causal_summary}
+
+三个效应虽然经由不同路径（PD 反馈、OSC 雅可比/FK、观测函数）产生，但\emph{全部源自同一个关节空间变量 $\vect{b}$}——这正是\cref{sec:pomdp} 把 $\vect{b}$ 建模为\emph{单一 episode 级隐变量}的直接依据。\cref{fig:causal_chain} 以图示方式总结这一耦合结构。
+
+% TODO[figure]: 后期美化此因果链总图，见 docs/todo.md 第 2 项
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_3_2_causal_chain.png}
+  \caption[编码器偏差的因果链]{编码器偏差 $\vect{b}$ 的因果链："一源三效应"结构。单个关节空间隐变量 $\vect{b}$ 通过三条结构上相互独立的路径——底层 PD 控制器的反馈回路、OSC 控制律中的雅可比与 FK、以及观测函数——同时产生三个可观测的效应。三个效应并非独立故障，而是同一隐变量在不同模块上的投影。}
+  \label{fig:causal_chain}
+\end{figure}
+
+\section{POMDP 形式化}\label{sec:pomdp}
+
+\cref{sec:causal_chain} 从物理层面刻画了编码器偏差的传播路径。本节将这一物理故事翻译成强化学习领域的标准语言：先回顾无偏差情况下的 MDP 基准，再引入偏差后的 POMDP 模型，并重点分析\emph{隐变量 $\vect{b}$} 的 episode 级静态性质——这一性质是本文方法论的核心前提，也是后续\cref{sec:observability} 可观测性分析的出发点。
+
+\subsection{无偏差情况下的 MDP 基准}\label{subsec:mdp_baseline}
+
+在没有编码器偏差的理想情况下，机器人操作任务可以建模为一个离散时间马尔可夫决策过程~\cite{sutton2018reinforcement}
+\begin{equation}
+  \mathcal{M}_0 = (\mathcal{S}^{\text{phys}},\,\mathcal{A},\,T_{\text{phys}},\,R,\,\gamma),
+  \label{eq:mdp0}
+\end{equation}
+其中物理状态空间 $\mathcal{S}^{\text{phys}}$ 的元素记作 $\vect{s}^{\text{phys}}$，包含机器人的真实运动学状态与任务相关的环境变量：
+\begin{equation}
+  \vect{s}^{\text{phys}} = \big(\vect{q},\;\dot{\vect{q}},\;g,\;\vect{x}_{\text{ee}},\;\vect{x}_{\text{obj}}\big),
+  \label{eq:state_mdp}
+\end{equation}
+即 7 维关节角、关节速度、夹爪开度、末端位置与任务目标物的位置。动作空间 $\mathcal{A} \subseteq \real^7$ 为上层策略可发出的控制指令（具体形式将在\cref{ch:task_policy} 中定义）；$T_{\text{phys}}(\vect{s}^{\text{phys}\prime} \mid \vect{s}^{\text{phys}},\,\vect{a})$ 为由物理仿真器决定的状态转移核；$R$ 为稀疏的任务成功奖励；$\gamma \in (0,1)$ 为折扣因子。在此基准下，系统是\emph{完全可观测}的，即观测 $\vect{o} = \vect{s}^{\text{phys}}$，最优策略取形式 $\pi^\star(\vect{a} \mid \vect{s}^{\text{phys}})$。
+
+\subsection{有编码器偏差的 POMDP}\label{subsec:pomdp_def}
+
+引入编码器偏差 $\vect{b}$ 后，\cref{subsec:effect1,subsec:effect2,subsec:effect3} 告诉我们：真实关节角 $\vect{q}_{\text{true}}$、真实末端位置 $\vect{x}_{\text{ee,true}}$ 以及偏差 $\vect{b}$ 本身对智能体均\emph{不可见}。这一信息结构上的退化正是部分可观测马尔可夫决策过程（POMDP）~\cite{kaelbling1998planning} 所描述的情形。我们将带偏差的问题形式化为七元组
+\begin{equation}
+  \mathcal{M} = (\mathcal{S},\,\mathcal{A},\,T,\,R,\,\Omega,\,O,\,\gamma).
+  \label{eq:pomdp}
+\end{equation}
+
+\paragraph{状态空间} 在基准 MDP 的物理状态之上再附加一个偏差分量：
+\begin{equation}
+  \vect{s} = (\vect{s}^{\text{phys}},\,\vect{b}), \qquad
+  \vect{s}^{\text{phys}} = \big(\vect{q}_{\text{true}},\,\dot{\vect{q}},\,g,\,\vect{x}_{\text{ee,true}},\,\vect{x}_{\text{obj}}\big),
+  \label{eq:state_pomdp}
+\end{equation}
+其中 $\vect{q}_{\text{true}}$ 与 $\vect{x}_{\text{ee,true}}$ 是物理上的真实值，$\vect{b} \in \real^7$ 是 episode 级的隐变量。
+
+\paragraph{观测空间与观测函数} 观测空间 $\Omega$ 由\cref{subsec:effect3} 给出的感知结构决定。观测函数 $O$ 为确定性映射\footnote{此处仅纳入受偏差影响的基础观测量以聚焦理论分析；关于引入外部末端位置观测 $\vect{x}_{\text{ee,true}} + \vect{\epsilon}$ 的扩展观测空间，将在\cref{sec:observability} 中讨论。}
+\begin{equation}
+  \vect{o} = O(\vect{s}) = \big(\underbrace{\vect{q}_{\text{true}} + \vect{b}}_{\text{污染}},\,\dot{\vect{q}},\,g,\,\underbrace{\text{FK}(\vect{q}_{\text{true}} + \vect{b})}_{\text{污染}},\,\vect{x}_{\text{obj}}\big).
+  \label{eq:obs_func}
+\end{equation}
+注意观测中的两个位置类分量——关节角与末端位置——均被同一个 $\vect{b}$ 污染；速度类与外部感知类分量（$\dot{\vect{q}}$、$g$、$\vect{x}_{\text{obj}}$）不受影响。奖励 $R$ 与折扣因子 $\gamma$ 与基准 MDP 一致；转移核 $T$ 的具体形式将在下一小节推导。由于 $\vect{o} \neq \vect{s}$，策略只能依赖部分观测，取形式 $\pi(\vect{a} \mid \vect{o})$。
+
+\subsection{隐变量 \texorpdfstring{$\vect{b}$}{b} 的 episode 级静态性}\label{subsec:bias_static}
+
+本节的核心观察是：\textbf{$\vect{b}$ 不是经典 POMDP 中逐步演化的隐状态，而是 episode 级的常量}——$\vect{b}$ 在每个 episode 开始时按分布 $P(\vect{b})$ 采样一次，之后在 episode 内保持不变，智能体的任何动作都无法改变其值。这与经典 POMDP 的时变隐状态有本质区别：后者要求智能体通过时序观测追踪信念（belief），而 $\vect{b}$ 作为 episode 级"环境参数"则不需要时序跟踪。这一静态性带来两个对本文方法论至关重要的推论：（1）\emph{偏差信息在整个 episode 内一致}，因此原则上不需要循环记忆机制，合适的观测增强即可将 POMDP 在信息结构层面近似还原为 MDP（见\cref{sec:observability}）；（2）\emph{策略最优性是在 $P(\vect{b})$ 分布上定义的}，
+\begin{equation}
+  \pi^\star = \arg\max_{\pi}\; \mathbb{E}_{\vect{b} \sim P(\vect{b}),\,\vect{\tau} \sim \pi} \left[\sum_{t=0}^{\infty} \gamma^t\, R(\vect{s}_t, \vect{a}_t)\right],
+  \label{eq:objective}
+\end{equation}
+即策略必须在偏差分布上取得期望最优，这直接激励了本文的\emph{随机偏差训练}（见\cref{sec:random_bias}）。
+
+\section{可观测性分析}\label{sec:observability}
+
+\cref{sec:pomdp} 已将带偏差的机器人操作建模为 POMDP，但"建模"与"求解"之间还存在一个关键的理论缺口：策略 $\pi(\vect{a} \mid \vect{o})$ 只能依赖\emph{单步}观测 $\vect{o}$ 做决策，那么从一个 $\vect{o}$ 出发，能否唯一地反推出真实物理状态 $\vect{q}_{\text{true}}$ 和隐变量 $\vect{b}$？这个问题的答案决定了 POMDP 在信息结构上是否"可解"。
+
+本节给出两条互补的结论：\textbf{命题~\ref{prop:non_identifiable}} 证明只依靠\cref{eq:obs_func} 给出的基础观测\emph{无法}区分不同的 $(\vect{q}_{\text{true}}, \vect{b})$；\textbf{命题~\ref{prop:identifiable}} 则证明若进一步引入一个独立于编码器的外部位置观测，$(\vect{q}_{\text{true}}, \vect{b})$ 可被唯一恢复。这两个命题从理论上精确预测了\cref{sec:exp_ablation} 中观测空间消融实验的成功与失败。
+
+\subsection{命题 1：基础观测下的不可辨识性}\label{subsec:unidentifiable}
+
+\begin{proposition}[基础观测下的不可辨识性]\label{prop:non_identifiable}
+设 POMDP 的观测函数 $O$ 由\cref{eq:obs_func} 给出：
+\[
+  \vect{o} = O(\vect{s}) = \big(\vect{q}_{\text{true}} + \vect{b},\,\dot{\vect{q}},\,g,\,\text{FK}(\vect{q}_{\text{true}} + \vect{b}),\,\vect{x}_{\text{obj}}\big).
+\]
+对任意固定观测 $\vect{o}$，存在无穷多 $(\vect{q}_{\text{true}}, \vect{b})$ 对产生该观测。因此，$O$ 在 $(\vect{q}_{\text{true}}, \vect{b})$ 上不是单射，$(\vect{q}_{\text{true}}, \vect{b})$ 不可由 $\vect{o}$ 唯一确定。
+\end{proposition}
+
+\begin{proof}
+考察观测 $\vect{o}$ 中与 $(\vect{q}_{\text{true}}, \vect{b})$ 相关的两个分量：关节读数 $\vect{q}_{\text{true}} + \vect{b}$ 与末端估计 $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$。两者都仅依赖于\emph{和} $\vect{q}_{\text{true}} + \vect{b}$，而不单独依赖 $\vect{q}_{\text{true}}$ 或 $\vect{b}$。
+
+取任意 $\vect{\delta} \in \real^7$，构造另一对 $(\tilde{\vect{q}}, \tilde{\vect{b}}) = (\vect{q}_{\text{true}} - \vect{\delta},\,\vect{b} + \vect{\delta})$，则
+\[
+  \tilde{\vect{q}} + \tilde{\vect{b}} = (\vect{q}_{\text{true}} - \vect{\delta}) + (\vect{b} + \vect{\delta}) = \vect{q}_{\text{true}} + \vect{b},
+\]
+因此 $\text{FK}(\tilde{\vect{q}} + \tilde{\vect{b}}) = \text{FK}(\vect{q}_{\text{true}} + \vect{b})$。其余观测分量（$\dot{\vect{q}}$、$g$、$\vect{x}_{\text{obj}}$）不依赖于 $(\vect{q}_{\text{true}}, \vect{b})$，因此在变换下保持不变。
+
+综上，对任意 $\vect{\delta}$，新旧两对 $(q, b)$ 产生完全相同的观测 $\vect{o}$。由 $\vect{\delta}$ 的任意性，存在无穷多 $(\vect{q}_{\text{true}}, \vect{b})$ 对与给定 $\vect{o}$ 相容。\end{proof}
+
+命题\ref{prop:non_identifiable} 表明 $(\vect{q}_{\text{true}}, \vect{b})$ 之间存在一个方向任意的\emph{平移对称性}：沿着 $\vect{\delta}$ 方向同时调整真实关节角和偏差，观测\emph{一字不差}。其根本原因在于\cref{subsec:effect3} 所揭示的事实——两个位置类观测分量虽然看似独立，实际上共享被污染的 $\vect{q}_{\text{measured}}$，两者之间恒为自洽，无法提供额外的辨识信息。因此，任何仅依赖单步基础观测的策略在原则上都无法区分不同的 $(\vect{q}_{\text{true}}, \vect{b})$，从而无法对不同的偏差做出有针对性的响应。
+
+\subsection{命题 2：观测增强恢复可辨识性}\label{subsec:identifiable_augmented}
+
+命题\ref{prop:non_identifiable} 的症结在于所有位置类观测都经过同一个被污染的编码器通道。要打破平移对称性，必须引入一个\emph{独立于编码器}的位置观测。一个自然的选择是外部定位系统——例如 OptiTrack 动捕、ArUco 视觉标记配合 Intel~RealSense D455 等——它们不依赖机器人自身的关节编码器，直接测量末端执行器在世界坐标系下的真实位置。这类测量可以统一建模为
+\begin{equation}
+  \vect{o}_{\text{real}} = \text{FK}(\vect{q}_{\text{true}}) + \vect{\epsilon}, \qquad \vect{\epsilon} \sim \mathcal{N}(\vect{0},\,\sigma^2 \mat{I}_3),
+  \label{eq:real_tcp}
+\end{equation}
+其中 $\sigma$ 表征定位系统的精度。将这一观测分量附加到基础观测函数 $O$ 中，得到增强观测空间 $\Omega'$ 与增强观测函数：
+\begin{equation}
+  \vect{o}' = O'(\vect{s}) = \big(\underbrace{\vect{q}_{\text{true}} + \vect{b},\,\dot{\vect{q}},\,g,\,\text{FK}(\vect{q}_{\text{true}} + \vect{b}),\,\vect{x}_{\text{obj}}}_{\vect{o}},\,\vect{o}_{\text{real}}\big).
+  \label{eq:obs_augmented}
+\end{equation}
+
+\begin{proposition}[增强观测下的可辨识性]\label{prop:identifiable}
+设增强观测函数 $O'$ 由\cref{eq:obs_augmented} 给出，且外部定位无噪声（$\vect{\epsilon} = \vect{0}$）。若 $\text{FK}$ 在当前构型 $\vect{q}_{\text{true}}$ 附近的一个邻域内是单射\footnote{对 Franka Panda 这样的 7-DoF 冗余机械臂，$\text{FK}$ 在全局上不是单射（存在 1-DoF 零空间）。然而在实际操作区域内远离奇异构型时，$\text{FK}$ 在局部具有单射性质；结合速度观测 $\dot{\vect{q}}$ 可进一步消除零空间歧义。本节的讨论在此假设下成立。}，则 $(\vect{q}_{\text{true}}, \vect{b})$ 可由 $\vect{o}'$ 唯一确定。
+\end{proposition}
+
+\begin{proof}
+在 $\vect{\epsilon} = \vect{0}$ 的条件下，由\cref{eq:real_tcp}，$\vect{o}_{\text{real}} = \text{FK}(\vect{q}_{\text{true}})$。根据 $\text{FK}$ 局部单射的假设，存在一个局部反函数 $\text{FK}^{-1}$ 使得
+\begin{equation}
+  \vect{q}_{\text{true}} = \text{FK}^{-1}(\vect{o}_{\text{real}}).
+  \label{eq:recover_q}
+\end{equation}
+既然 $\vect{q}_{\text{true}}$ 已知，又因为 $\vect{o}$ 中包含分量 $\vect{q}_{\text{true}} + \vect{b}$，便可以直接解出
+\begin{equation}
+  \vect{b} = (\vect{q}_{\text{true}} + \vect{b}) - \vect{q}_{\text{true}}.
+  \label{eq:recover_b}
+\end{equation}
+因此 $(\vect{q}_{\text{true}}, \vect{b})$ 由 $\vect{o}'$ 唯一确定。\end{proof}
+
+与命题\ref{prop:non_identifiable} 相比，命题\ref{prop:identifiable} 的关键不同在于：$\vect{o}_{\text{real}}$ 绕开了被污染的编码器通道，直接提供了一个仅依赖 $\vect{q}_{\text{true}}$（而非 $\vect{q}_{\text{true}} + \vect{b}$）的"独立观测"，从而\emph{打破}了命题\ref{prop:non_identifiable} 证明中使用的平移对称性。在信息论视角下，$\vect{o}_{\text{real}}$ 与已有的位置类观测线性无关，恰好补足了原先缺失的一维辨识方向。其几何直觉如\cref{fig:identifiability} 所示。
+
+\begin{figure}[!htbp]
+  \centering
+  \begin{tikzpicture}[
+    >={Stealth[length=2mm]},
+    font=\small,
+    axis/.style={->, thick},
+    eqline/.style={red!70!black, thick, dashed},
+    realline/.style={blue!70!black, thick},
+    candpt/.style={fill=red!70!black, draw=red!70!black, circle, inner sep=1.5pt},
+    soln/.style={fill=green!50!black, draw=green!30!black, line width=0.8pt, circle, inner sep=2.5pt},
+  ]
+    % ===== Left panel: Prop 1 =====
+    \begin{scope}[shift={(0,0)}]
+      \draw[axis] (0, 0) -- (4.7, 0) node[right, font=\scriptsize] {$\vect{q}_\text{true}$};
+      \draw[axis] (0, 0) -- (0, 4.5) node[above, font=\scriptsize] {$\vect{b}$};
+
+      \draw[eqline] (0.5, 3.5) -- (3.5, 0.5);
+      \node[font=\scriptsize, color=red!70!black, anchor=west] at (3.55, 0.4) {$\vect{q}_\text{true} + \vect{b} = c$};
+
+      \node[candpt] at (1.0, 3.0) {};
+      \node[candpt] at (1.7, 2.3) {};
+      \node[candpt] at (2.5, 1.5) {};
+      \node[candpt] at (3.2, 0.8) {};
+
+      \node[anchor=north, font=\bfseries] at (2.3, -0.4) {(a) 基础观测};
+      \node[anchor=north, font=\scriptsize, align=center] at (2.3, -0.95) {等价线上所有 $(\vect{q}_\text{true}, \vect{b})$\\ 产生相同观测 $\vect{o}$（命题~\ref{prop:non_identifiable}）};
+    \end{scope}
+
+    % ===== Right panel: Prop 2 =====
+    \begin{scope}[shift={(7.5,0)}]
+      \draw[axis] (0, 0) -- (4.7, 0) node[right, font=\scriptsize] {$\vect{q}_\text{true}$};
+      \draw[axis] (0, 0) -- (0, 4.5) node[above, font=\scriptsize] {$\vect{b}$};
+
+      \draw[eqline] (0.5, 3.5) -- (3.5, 0.5);
+      \node[font=\scriptsize, color=red!70!black, anchor=west] at (3.55, 0.4) {$\vect{q}_\text{true} + \vect{b} = c$};
+
+      \draw[realline] (1.7, -0.05) -- (1.7, 4.2);
+      \node[font=\scriptsize, color=blue!70!black, anchor=south, align=center] at (1.7, 4.2) {$\vect{q}_\text{true} = \text{FK}^{-1}(\vect{o}_\text{real})$};
+
+      \node[soln] (sol) at (1.7, 2.3) {};
+      \node[font=\scriptsize, color=green!30!black, anchor=west] at (2.0, 2.4) {唯一解};
+
+      \node[anchor=north, font=\bfseries] at (2.3, -0.4) {(b) 增强观测（含 $\vect{o}_\text{real}$）};
+      \node[anchor=north, font=\scriptsize, align=center] at (2.3, -0.95) {独立约束打破对称\\交于唯一点（命题~\ref{prop:identifiable}）};
+    \end{scope}
+  \end{tikzpicture}
+  \caption{可辨识性的几何示意。横轴 $\vect{q}_\text{true}$ / 纵轴 $\vect{b}$ 为抽象一维表示。\textbf{(a)} 仅依赖基础观测时，所有满足 $\vect{q}_\text{true} + \vect{b} = c$（红色虚线）的 $(\vect{q}_\text{true}, \vect{b})$ 对都产生相同的观测 $\vect{o}$，$\vect{\delta}$ 方向上的平移对称性使原问题不可辨识。\textbf{(b)} 引入独立外部位置观测后，由\cref{eq:recover_q}，$\vect{q}_\text{true}$ 被锁定到 $\text{FK}^{-1}(\vect{o}_\text{real})$（蓝色实线）；该约束与等价线的交点唯一（绿色圆点），即\cref{prop:identifiable} 给出的可辨识解。$\sigma > 0$ 时蓝线变为有限宽度的"带"，唯一性退化为后验上的最大似然估计——这正是\cref{subsec:identifiability_vs_solvability} 中"平均性补偿"的几何来源。}
+  \label{fig:identifiability}
+\end{figure}
+
+\subsection{可辨识性 \texorpdfstring{$\neq$}{≠} 可求解性}\label{subsec:identifiability_vs_solvability}
+
+命题\ref{prop:identifiable} 是\emph{信息论}层面的结论：增强观测 $\vect{o}'$ 在原则上能够区分不同的 $(\vect{q}_{\text{true}}, \vect{b})$。但这并不等同于"问题已回归无偏差情形"——偏差并未\emph{消失}，它只是从\emph{不可见}变成了\emph{可推断}。\cref{subsec:effect2} 所证明的控制偏差和\cref{subsec:effect1} 的初始位置偏移仍然存在：POMDP 的物理转移核 $T_{\text{phys}}$ 在引入 $\vect{o}_{\text{real}}$ 前后\emph{完全相同}，观测增强改变的是\emph{信息结构}而非\emph{动力学}。
+
+因此，"POMDP 近似还原为 MDP"的严格意义是：存在一个作用于 $\vect{o}'$ 的策略族 $\pi(\vect{a} \mid \vect{o}')$，其贝尔曼方程求解与原 POMDP 的最优策略一致；这里的 MDP 状态里仍然包含 $\vect{b}$，最优策略是一个\emph{以 $\vect{b}$ 为条件}的函数：
+\begin{equation}
+  \pi^\star(\vect{a} \mid \vect{o}') \;=\; \pi^\star\big(\vect{a} \,\big|\, \vect{q}_{\text{true}},\,\vect{b}\big).
+  \label{eq:conditional_policy}
+\end{equation}
+对不同的 $\vect{b}$，$\pi^\star$ 必须输出\emph{不同的}补偿动作。在 $\vect{\epsilon} > 0$ 的现实情形下，由于噪声使得不同的 $(\vect{q}_{\text{true}}, \vect{b})$ 可能产生几乎相同的 $\vect{o}'$，最优动作退化为观测条件下后验上的期望最优，即一种"\textbf{平均性补偿}"——策略在与观测相容的所有偏差上输出一个折中动作。
+
+这一分析带来两个对后续章节至关重要的启示。\emph{首先}，单一策略要覆盖整个 $P(\vect{b})$，训练时必须暴露于偏差分布的多样性——仅在固定 $\vect{b}$ 下训练会导致"单点条件化"：策略学到特定偏差下的补偿量，在其他偏差（尤其是 $\vect{b}=\vect{0}$ 的无故障情形）上\emph{过补偿}。这正是\cref{sec:random_bias} \emph{随机偏差训练}的理论依据。\emph{其次}，观测增强提供了训练的\emph{可行性}但不保证\emph{充分性}——能否将"信息上可辨识"转化为"实际能学到"还依赖数据分布、奖励密度和优化能力。\cref{sec:exp_h2} 的固定偏差实验将提供直接的实证支持：在所有关节固定 $b_i = 0.2\,\text{rad}$ 下训练的策略在零偏差测试中成功率显著低于随机偏差训练得到的策略，正是单点条件化导致的过补偿现象（具体数值见\cref{sec:exp_h2}）。
+
+\subsection{讨论：噪声、构型信息与实验对应}\label{subsec:observability_discussion}
+
+\paragraph{定位噪声的影响} 命题\ref{prop:identifiable} 假设 $\vect{\epsilon} = \vect{0}$。在 $\sigma > 0$ 的实际情况下，$\vect{q}_{\text{true}}$ 和 $\vect{b}$ 只能被\emph{近似}恢复：$\sigma \to 0$ 时辨识精度趋于完美；$\sigma$ 增大时辨识误差相应增大；极端地，若 $\sigma$ 大到使 $\vect{o}_{\text{real}}$ 的信噪比低于 $\vect{b}$ 本身的典型幅值，则外部观测失去作用，系统退化回命题\ref{prop:non_identifiable} 描述的不可辨识情形。本文采用的 $\sigma = 5$\,mm 对应于 ArUco 视觉标记配合 D455 深度相机在典型工作距离下的定位精度，在实践中既易于实现，又足以支撑\cref{ch:task_policy} 中策略对偏差的鲁棒响应。
+
+\paragraph{为什么仍保留带偏差的本体感觉} 带偏差的 $\vect{q}_{\text{measured}}$ 仍然编码了机械臂的关节构型——奇异性邻近度、关节限位裕度、$7$-DoF 冗余度中的零空间方向等——这些信息单凭三维的 $\vect{o}_{\text{real}}$ 无法提供，构成保留本体感觉通路的必要性。与之互补的设计层面理由（信息完整性与运行时容错）见\cref{subsec:obs_keep_contam}。
+
+\paragraph{与消融实验的对应} 本节的两个命题并非纯粹的理论推演，它们直接预测了\cref{sec:exp_ablation} 中观测空间消融实验的结果。消融实验把\cref{ch:task_policy} 使用的完整 $24$ 维观测与\emph{剔除}独立外部 TCP $\vect{o}_\text{real}$ 的 $18$ 维变体进行对照——前者对应命题\ref{prop:identifiable} 的可辨识情形，策略在全偏差范围内应保持鲁棒；后者对应命题\ref{prop:non_identifiable} 的不可辨识情形，预期策略性能在偏差下严重退化。这一对应既为本文的观测空间设计提供了可验证的理论依据，也反向印证了两个命题并非形式化游戏，而是对问题本质的准确刻画。
+
+\section{仿真实现与等价性分析}\label{sec:sim_implementation}
+
+前四节的分析均在抽象层面展开：\cref{sec:causal_chain} 给出偏差在控制与观测中传播的物理因果链，\cref{sec:pomdp} 将其形式化为 POMDP，\cref{sec:observability} 分析了信息结构上的可辨识性。本节的任务则是将这些抽象结论\emph{落地}——在基于 MuJoCo 的仿真环境中忠实地复现\cref{sec:causal_chain} 所描述的三个效应，并严格论证仿真实现与原物理机制在相关观测量上等价。
+
+\paragraph{为什么不能简单沿用 joint\_state 注入} 在 ROS 环境下，一种常见的故障注入做法是直接对 \texttt{/joint\_states} 话题上发布的关节角度加入偏差~\cite{ma2023case}。这在"控制器订阅 \texttt{/joint\_states} 做反馈"的标准 ROS 架构中是简洁有效的，因为偏差一经进入话题，自然地传播到所有下游读取方。然而本文的仿真和真机均\emph{不符合}这一前提：仿真中的 OSC 控制器直接从 MuJoCo 的 \texttt{data.qpos} 读取关节角度，根本没有 \texttt{/joint\_states} 话题作为中介；真机上 HIL-SERL 架构的阻抗控制器则通过 \texttt{FrankaStateHandle} 的 C++ 直接内存访问读取机器人状态，同样绕过了 ROS topic 通信（详见\cref{ch:real_chapter}）。在这两种情形下，仅在 \texttt{/joint\_states} 上注入偏差都无法影响控制器或观测模块——需要设计一个与底层数据流耦合方式解耦的\emph{等价注入方案}。本节首先给出与具体实现无关的充分条件，再在此基础上描述 MuJoCo 下的具体实现。
+
+\subsection{故障注入的充分条件}\label{subsec:injection_sufficient}
+
+\begin{proposition}[故障注入的充分条件]\label{prop:injection}
+设某一故障注入实现满足以下两个条件：
+\begin{enumerate}
+  \item[\textbf{\textup{(C1)}}] \textbf{控制条件}：在控制律每次计算关节力矩时，所使用的关节角度取值等于 $\vect{q}_{\text{true}} + \vect{b}$；
+  \item[\textbf{\textup{(C2)}}] \textbf{观测条件}：在观测模块每次返回状态时，关节角分量等于 $\vect{q}_{\text{true}} + \vect{b}$，末端位姿分量等于 $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$。
+\end{enumerate}
+则该实现忠实地复现\cref{sec:causal_chain} 所定义的三个效应——初始位置偏移、控制偏差与感知偏差。
+\end{proposition}
+
+\begin{proof}
+\emph{效应 2（控制偏差）}：\cref{subsec:effect2} 定义下的偏差力矩为 $\vect{\tau}^{\text{biased}} = \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}} + \vect{b})$。条件 (C1) 保证控制律计算时使用的正是 $\vect{q}_{\text{true}} + \vect{b}$，因此输出的力矩即为 $\vect{\tau}^{\text{biased}}$，与该小节的定义完全一致。
+
+\emph{效应 3（感知偏差）}：\cref{subsec:effect3} 要求观测 $\vect{o}$ 中的关节分量为 $\vect{q}_{\text{true}} + \vect{b}$、末端位姿分量为 $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$，这恰好是条件 (C2) 的内容。
+
+\emph{效应 1（初始位置偏移）}：\cref{subsec:effect1} 的稳态条件 $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ 是条件 (C1) 应用于底层 PD 控制器的直接推论——当 PD 控制器以 $\vect{q}_{\text{target}} = \vect{q}_{\text{home}}$ 跟踪目标、并以 $\vect{q}_{\text{true}} + \vect{b}$ 作为反馈时，稳态必然停在 $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ 处。在仿真中如果不显式运行底层 PD 控制器（见\cref{subsec:sim_effect1}），直接以 $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ 初始化关节位置即可达到相同的稳态效果。\end{proof}
+
+\cref{prop:injection} 将"故障注入是否忠实"这一问题抽象为两个\emph{与架构无关}的条件：不论下层实现是通过 ROS 话题、C++ 内存访问还是仿真的 data 结构，只要 (C1) 和 (C2) 成立，注入就等价。这为本节的仿真实现与\cref{ch:real_chapter} 的真机 B+D 双注入方案提供了统一的正确性依据。
+
+\subsection{MuJoCo 中的具体实现}\label{subsec:sim_implementation}
+
+本文的仿真建立于 MuJoCo 3.0 之上，机器人控制周期为 $10$\,Hz，内嵌 $500$\,Hz 物理仿真。底层不运行显式的 PD 伺服，而直接以当前 \texttt{data.qpos} 作为真实关节状态；上层 OSC 控制器通过调用 \texttt{mujoco.mj\_jacSite} 和 \texttt{data.site\_xpos} 获得雅可比与末端位置。我们按\cref{prop:injection} 的两个条件分别实现三个效应。
+
+\subsubsection*{效应 1：初始位置偏移的实现}\label{subsec:sim_effect1}
+
+在 \texttt{reset\_robot} 阶段，我们不显式模拟底层 PD 控制器的瞬态，而是直接将 MuJoCo 的关节位置设为偏移后的稳态值：
+\begin{equation}
+  \vect{q}_{\text{data.qpos}}^{\text{reset}} \;\leftarrow\; \vect{q}_{\text{home}} - \vect{b}.
+  \label{eq:sim_reset}
+\end{equation}
+按\cref{eq:effect1}，这正是底层 PD 控制器在反馈被偏差污染时的稳态终点。这一简化跳过了真机上几十至几百毫秒的 PD 瞬态，但在\emph{稳态终点}上与真机严格一致。由于本文关心的是 episode 内的任务执行（而非初始化过程中的瞬态），这一简化对后续分析没有影响。
+
+\subsubsection*{效应 2：控制偏差的实现}\label{subsec:sim_effect2}
+
+条件 (C1) 要求 OSC 在计算力矩时使用 $\vect{q}_{\text{true}} + \vect{b}$ 而不是 $\vect{q}_{\text{true}}$。由于 \texttt{opspace()} 直接从 \texttt{data.qpos} 和由此派生的 \texttt{mj\_forward} 结果中读取关节状态与雅可比，我们采用"\textbf{临时替换—计算—恢复}"的三步式模式：每次物理子步开始时，先将 \texttt{data.qpos} 中的手臂关节分量替换为 $\vect{q}_{\text{true}} + \vect{b}$ 并调用 \texttt{mj\_forward} 更新内部派生量，随后调用 \texttt{opspace()} 计算力矩，再将 \texttt{data.qpos} 恢复为真实的 $\vect{q}_{\text{true}}$ 并重新 \texttt{mj\_forward}，最后将计算得到的力矩写入 \texttt{data.ctrl} 并由 \texttt{mj\_step} 驱动物理仿真。完整流程见\cref{alg:sim_step}。
+
+\begin{algorithm}[htbp]
+  \caption{带编码器偏差的单控制步（$N$ 次物理子步）}
+  \label{alg:sim_step}
+  \begin{algorithmic}[1]
+    \Require 真实关节位置 $\vect{q}_{\text{true}}$、期望末端位姿 $\vect{x}_{\text{target}}$、偏差 $\vect{b}$
+    \For{$k = 1$ \textbf{to} $N$}
+      \State $\vect{q}_{\text{save}} \gets \texttt{data.qpos}$ \Comment{备份真实关节位置}
+      \State $\texttt{data.qpos} \gets \vect{q}_{\text{save}} + \vect{b}$ \Comment{注入偏差}
+      \State $\texttt{mj\_forward(model, data)}$ \Comment{更新雅可比/FK 等派生量}
+      \State $\vect{\tau} \gets \texttt{opspace}(\texttt{data}, \vect{x}_{\text{target}})$ \Comment{用带偏差的 $\vect{q}$ 计算力矩}
+      \State $\texttt{data.qpos} \gets \vect{q}_{\text{save}}$ \Comment{恢复真实关节位置}
+      \State $\texttt{mj\_forward(model, data)}$
+      \State $\texttt{data.ctrl[arm]} \gets \vect{\tau}$ \Comment{真实系统施加偏差力矩}
+      \State $\texttt{mj\_step(model, data)}$ \Comment{物理仿真推进}
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+这一模式的等价性依赖一个简单观察：\texttt{opspace} 是 \texttt{data.qpos} 经由 \texttt{mj\_forward} 派生的几何量（$\mat{J}$、$\text{FK}$、$\mat{\Lambda}$）的\emph{纯函数}，其输出完全由调用时的 \texttt{data.qpos} 决定。算法第 3--5 行保证 \texttt{opspace} 被调用时关节分量恰为 $\vect{q}_{\text{true}} + \vect{b}$，因此返回的力矩严格等于 $\vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}} + \vect{b})$——这正是 \cref{prop:injection} 条件 (C1) 的要求。随后的恢复操作不改变已经算出的力矩值（已被保存到局部变量），只是让物理仿真重新基于真实状态执行。从外部观察，这一流程与"OSC 直接读取被污染的编码器、输出偏差力矩、真实物理按此力矩演化"的真机情形完全对应。
+
+\subsubsection*{效应 3：感知偏差的实现}\label{subsec:sim_effect3}
+
+条件 (C2) 要求观测模块返回被污染的关节角与末端位姿。在 \texttt{get\_robot\_state()} 中，我们直接构造 $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$，并通过一次临时替换计算 $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$：
+\begin{equation}
+  \vect{o}_{\text{joint}} = \vect{q}_{\text{true}} + \vect{b}, \qquad
+  \vect{o}_{\text{ee}} = \text{FK}(\vect{q}_{\text{true}} + \vect{b}),
+  \label{eq:sim_obs}
+\end{equation}
+其中 $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$ 通过将 \texttt{data.qpos} 暂时替换为 $\vect{q}_{\text{true}} + \vect{b}$、调用 \texttt{mj\_forward}、读取 \texttt{data.site\_xpos}、再恢复真实值的同一技巧获得，与\cref{alg:sim_step} 的替换-恢复模式一致，正确性由同样的"纯函数依赖"论证保证。
+
+\subsection{外部传感器仿真}\label{subsec:sim_external}
+
+除了上述被偏差污染的观测分量外，\cref{sec:observability} 的命题\ref{prop:identifiable} 还要求引入一个独立于编码器的外部位置观测 $\vect{o}_{\text{real}}$。在仿真中我们将其建模为
+\begin{equation}
+  \vect{o}_{\text{real}} \;=\; \vect{x}_{\text{ee,true}} + \vect{\epsilon},
+  \qquad \vect{\epsilon} \sim \mathcal{N}(\vect{0},\,\sigma^2 \mat{I}_3),\; \sigma = 5\,\text{mm},
+  \label{eq:sim_real_tcp}
+\end{equation}
+其中 $\vect{x}_{\text{ee,true}}$ 直接从 MuJoCo 的真实 $\text{FK}$ 读取（即 \texttt{data.site\_xpos} 在真实 \texttt{data.qpos} 下的取值，不含偏差），$\vect{\epsilon}$ 为独立于时间步与偏差的各向同性高斯噪声。\cref{sec:observability} 已经讨论过，$\sigma = 5$\,mm 对应 ArUco 视觉标记配合 Intel RealSense D455 在典型工作距离下的外部定位精度。任务目标物体（如方块）的位置则假设由一个俯视外部相机测得，不受编码器偏差影响，在仿真中直接从 MuJoCo 的物体传感器读取。
+
+\subsection{仿真与真实的主要差距}\label{subsec:sim_real_gap}
+
+本节描述的 MuJoCo 仿真是对真实工业机器人系统的\emph{理想化近似}，主要差距包括：(i)~效应 1中跳过了底层 PD 控制器的瞬态，而真机上由 \texttt{libfranka} 驱动的 $1$\,kHz 伺服存在几十毫秒到数百毫秒的有限响应时间；(ii)~仿真使用 OSC 控制律，而真机 HIL-SERL 架构使用笛卡尔阻抗控制器，两者的等价性将在\cref{subsec:osc_impedance} 严格分析；(iii)~MuJoCo 的刚体动力学不包含关节摩擦、电机延迟与线缆影响等真实效应；(iv)~本文只考虑固定与随机偏差，暂未建模温度漂移与电磁噪声等时变偏差类型。
+
+这些差距\emph{均朝向使偏差效应在仿真中变弱的方向}——摩擦与延迟在真机上会进一步恶化偏差对控制精度的影响，时变偏差在真机上会增加辨识难度。因此仿真可以被视为一个保守的测试平台：若某方法在仿真中能够应对偏差，那么它在真机上\emph{更必要}、且通常\emph{更显著}。完整的 8 项对比表与真机注入方案的具体实现将在\cref{ch:real_chapter} 给出，此处不再展开。

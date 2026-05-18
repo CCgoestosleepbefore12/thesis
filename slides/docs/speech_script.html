@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Defense Speech Script</title>
+<style>
+  @page { margin: 2cm; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 12pt;
+    line-height: 1.65;
+    color: #1a1a1a;
+    max-width: 760px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+  h1 {
+    font-size: 20pt;
+    border-bottom: 2px solid #1a1a1a;
+    padding-bottom: 6px;
+    margin-bottom: 4px;
+  }
+  .sub { color: #666; font-size: 10.5pt; margin-bottom: 24px; }
+  h2 {
+    font-size: 15pt;
+    margin-top: 30px;
+    padding: 4px 0;
+    border-bottom: 1px solid #b8b0a4;
+    page-break-after: avoid;
+  }
+  h3 {
+    font-size: 11.5pt;
+    color: #5a4a3a;
+    margin-top: 18px;
+    margin-bottom: 4px;
+    page-break-after: avoid;
+  }
+  h3 .t { color: #8a8178; font-weight: normal; font-size: 10pt; }
+  p { margin: 6px 0; orphans: 3; widows: 3; }
+  .cue { color: #b8553e; font-style: italic; }
+  em { font-style: italic; }
+  .foot { color: #666; font-size: 10.5pt; font-style: italic; margin-top: 30px; border-top: 1px solid #b8b0a4; padding-top: 8px; }
+  section { page-break-inside: avoid; }
+</style>
+</head>
+<body>
+
+<h1>Defense Speech Script</h1>
+<div class="sub">Hierarchical Imitation and Reinforcement Learning for Fault-Tolerant Manipulation &middot; Target 15&ndash;18 min &middot; <span class="cue">[stage directions in red]</span></div>
+
+<section>
+<h2>Opening</h2>
+<h3>Slide 1 &middot; Cover <span class="t">(~30 s)</span></h3>
+<p>Good afternoon, everyone. My name is Cheng Cheng. Thank you all for being here.</p>
+<p>Today I will present my master's thesis &mdash; <em>Hierarchical Imitation and Reinforcement Learning for Fault-Tolerant Manipulation</em>.</p>
+<p>This work was carried out at the Institute of Industrial Automation and Software Engineering, under the supervision of Professor Andrey Morozov.</p>
+</section>
+
+<section>
+<h2>&sect;1 Motivation <span style="font-weight:normal;font-size:11pt;color:#8a8178">(~2 min)</span></h2>
+
+<h3>Slide 2 &middot; Agenda <span class="t">(~20 s)</span></h3>
+<p>Here is the outline of the talk. I will start with the motivation, then formalize the problem as a POMDP. After that I present the method, followed by the simulation and real-robot results, and I close with the conclusions and future work.</p>
+
+<h3>Slide 3 &middot; &sect;1 divider <span class="t">(~5 s)</span></h3>
+<p>Let's begin with the motivation.</p>
+
+<h3>Slide 4 &middot; Motivation hook <span class="t">(~45 s)</span></h3>
+<p>Industrial robots rely on joint encoders to know where they are. Every controller and every observer reads the encoder.</p>
+<p>But in real deployment, encoders develop a <em>systematic bias</em> &mdash; after a collision, after a part is replaced without recalibration, or simply from thermal drift.</p>
+<p>And the magnitude matters. A calibration offset of just 0.1 radian &mdash; about six degrees &mdash; shifts the end-effector by roughly six and a half centimeters. Under more severe bias, up to nineteen centimeters. That is far beyond the tolerance of any precision manipulation task.</p>
+<p>Today the standard fix is to stop the production line and recalibrate. That costs throughput. Our goal is different &mdash; we want the robot to <em>adapt online</em>, without halting.</p>
+
+<h3>Slide 5 &middot; Fault-injection demo <span class="t">(~30 s)</span></h3>
+<p>This is what encoder bias actually looks like on the real robot. <span class="cue">[play video, ~8 s]</span></p>
+<p>Here we inject a random bias at joint one. You can see the end-effector drift away from where the controller <em>thinks</em> it is. The controller is confident &mdash; but it is confidently wrong.</p>
+<p>This drift is the problem the rest of the talk is about.</p>
+</section>
+
+<section>
+<h2>&sect;2 Problem Formulation <span style="font-weight:normal;font-size:11pt;color:#8a8178">(~2.5 min)</span></h2>
+
+<h3>Slide 6 &middot; &sect;2 divider <span class="t">(~5 s)</span></h3>
+<p>To design a solution, we first need to formalize what kind of problem this is.</p>
+
+<h3>Slide 7 &middot; MDP &rarr; POMDP <span class="t">(~75 s)</span></h3>
+<p>In a standard control setting, we have a Markov Decision Process &mdash; an MDP. The agent observes the full state, and the optimal policy is simply a function of that observable state.</p>
+<p>Encoder bias breaks this. The encoder reads <em>q-measured</em>, which equals the true joint angle <em>q-true</em> plus a hidden bias <em>b</em>. The agent never sees <em>q-true</em> directly &mdash; it only ever sees the contaminated reading.</p>
+<p>A hidden variable that the agent cannot observe &mdash; that is exactly the definition of a Partially Observable MDP, a POMDP. Formally, we extend the tuple with an observation space and an observation function.</p>
+<p>So the first message is simple: control under encoder bias is <em>not</em> an MDP. It is a POMDP, and <em>b</em> is the hidden variable.</p>
+
+<h3>Slide 8 &middot; Causal chain <span class="t">(~65 s)</span></h3>
+<p>Now, how does this one bias actually propagate? This is the causal chain &mdash; one source, three effects.</p>
+<p>The single bias <em>b</em> enters at three independent points. First, the operational-space controller computes a wrong Jacobian and wrong forward kinematics. Second, the joint PD loop settles at an offset position. And third, the observation module returns biased joint readings and a biased end-effector pose.</p>
+<p>Here is the key point: all three channels read <em>q plus b</em>. There is no clean channel anywhere. The agent never observes <em>b</em> directly &mdash; and that is precisely why this is a POMDP. The whole method that follows is about dealing with this one hidden variable.</p>
+</section>
+
+<section>
+<h2>&sect;3 Method <span style="font-weight:normal;font-size:11pt;color:#8a8178">(~5 min)</span></h2>
+
+<h3>Slide 9 &middot; &sect;3 divider <span class="t">(~5 s)</span></h3>
+<p>Now the method. How do we make a policy robust to this hidden bias?</p>
+
+<h3>Slide 10 &middot; Mechanism 1 &middot; Observation Augmentation <span class="t">(~45 s)</span></h3>
+<p>The method has two mechanisms. The first is observation augmentation.</p>
+<p>This table is our 25-dimensional observation, split by whether each channel is contaminated by the bias. The joint angles and the forward-kinematics TCP are contaminated &mdash; they all carry <em>q plus b</em>. But there is one channel that is <em>not</em>: the Real TCP, measured by an external sensor, independent of the encoder.</p>
+<p>Why does this one channel matter? Without it, the agent cannot tell the true configuration apart from a shifted one &mdash; it can only learn an <em>average</em> compensation. With it, the difference between the biased and the real TCP is, approximately, a function of <em>b</em>. That difference is what lets the policy infer the bias implicitly.</p>
+
+<h3>Slide 11 &middot; Mechanism 2 &middot; Random-Bias Training <span class="t">(~45 s)</span></h3>
+<p>The second mechanism is random-bias training.</p>
+<p>At every episode we sample a fresh bias &mdash; uniform, up to 0.25 radian, larger than typical industrial drift. The bias is never given to the policy as an input; the policy has to perceive it implicitly, through the 25-dimensional observation.</p>
+<p>This sounds like domain randomization, but the information role is the opposite. Domain randomization randomizes nuisance variables the policy should <em>ignore</em>. We randomize a hidden variable the policy <em>must condition on</em> &mdash; it has to output a different compensation for a different bias.</p>
+<p>So: augment the observation, and randomize the bias. Those are the two mechanisms.</p>
+
+<h3>Slide 12 &middot; Network Architecture <span class="t">(~25 s)</span></h3>
+<p>All policies share one network &mdash; a frozen DINOv3 vision backbone, and three heads: a continuous actor, a twin critic, and a discrete gripper critic. The same architecture is used in simulation and on the real robot, and by both the task and the backup policy.</p>
+
+<h3>Slide 13 &middot; Task Policy &middot; Simulation (HIL-SERL) <span class="t">(~35 s)</span></h3>
+<p>So how is the task policy trained? There are two paths.</p>
+<p>In simulation we use HIL-SERL &mdash; an off-policy RL framework with a human in the loop. We warm up with behavior cloning, then run SAC online, with a human intervening by keyboard to correct the policy.</p>
+<p>Simulation allows this because rollouts are cheap, throughput is high, and the human interventions compensate for the sparse reward. Online RL converges.</p>
+
+<h3>Slide 14 &middot; Task Policy &middot; Real Robot (BC + HG-DAgger) <span class="t">(~35 s)</span></h3>
+<p>On the real robot the path is different &mdash; behavior cloning plus HG-DAgger.</p>
+<p>We collect human demonstrations, train a behavior-cloning policy, and then iterate: the policy rolls out, the human takes over whenever needed, those corrections go into the buffer, and we retrain. Three iterations.</p>
+<p>Why not online RL on the real robot? That is exactly the negative result I will show in the next section.</p>
+
+<h3>Slide 15 &middot; Backup Policy &middot; Sim-only Training <span class="t">(~40 s)</span></h3>
+<p>That was the task policy. The backup policy &mdash; the collision-avoidance policy &mdash; is trained differently again.</p>
+<p>It is trained purely in simulation, with SAC and domain randomization, through a reward-and-geometry evolution we call V1 to V3b.</p>
+<p>And importantly, it is never fine-tuned on the real robot. The task policy needs real-robot adaptation because its perception is vision-heavy &mdash; the sim-to-real gap is large. The backup policy reasons only over joint and Cartesian distances &mdash; the gap is small. So it transfers zero-shot.</p>
+
+<h3>Slide 16 &middot; Backup Policy &middot; Real-Robot Deployment <span class="t">(~25 s)</span></h3>
+<p>Here is the backup policy on the real robot &mdash; the V3b checkpoint loaded directly, no retraining. <span class="cue">[play video, ~6 s]</span> The geometry alignment matches the simulation exactly; the gap that needed closing was geometric, not perceptual.</p>
+
+<h3>Slide 17 &middot; Hierarchical Supervisor FSM <span class="t">(~45 s)</span></h3>
+<p>Finally, how do the two policies coordinate at runtime? Through a Hierarchical Supervisor &mdash; a three-state finite-state machine.</p>
+<p>In the TASK state, the task policy runs, and we monitor the distance to the human hand. If it gets too close, we switch to BACKUP. In BACKUP, the backup policy takes over until the hand is clear again &mdash; with a hysteresis margin to avoid chattering. Then we enter HOMING.</p>
+<p>HOMING is the important one. A clipped-P controller resets the end-effector to the pose where backup was triggered, and hands control back to the task policy &mdash; same episode.</p>
+<p>This means the backup maneuver does <em>not</em> contaminate the task trajectory. The backup contributes essentially zero to task success &mdash; and that is why, in the results, the success matrix has no backup column.</p>
+</section>
+
+<section>
+<h2>&sect;4 Simulation Results <span style="font-weight:normal;font-size:11pt;color:#8a8178">(~3 min)</span></h2>
+
+<h3>Slide 18 &middot; &sect;4 divider <span class="t">(~5 s)</span></h3>
+<p>Let's look at the simulation results.</p>
+
+<h3>Slide 19 &middot; H1 / H2 / H3 <span class="t">(~50 s)</span></h3>
+<p>These are the three core simulation experiments, on the PickCube task. The chart shows success rate against encoder bias, for three policies.</p>
+<p>H1, the red line &mdash; a policy trained without bias. It is perfect at zero bias, but it collapses as the bias grows: by 0.25 radian it is almost at zero. This is the degradation Proposition 1 predicts.</p>
+<p>H2 &mdash; a policy trained at a single fixed bias. It is robust around that training point, but it <em>over-compensates</em> at zero bias &mdash; only 83 percent. Single-point conditioning overshoots.</p>
+<p>H3 &mdash; our random-bias policy, the black line. It stays between 92 and 100 percent across the whole range, and it even extrapolates beyond the 0.25 radian training ceiling. Random-bias training works.</p>
+
+<h3>Slide 20 &middot; Observation Ablation <span class="t">(~40 s)</span></h3>
+<p>Next, the observation ablation &mdash; this directly tests the propositions.</p>
+<p>With the 18-dimensional observation &mdash; no Real TCP &mdash; the policy averages 42 percent. Not identifiable, exactly as Proposition 1 predicts. Adding only the object position, 21 dimensions, barely helps &mdash; 46 percent. The decisive jump is the Real TCP: at 24 dimensions, success reaches 92 to 100 percent.</p>
+<p>So the propositions are not just information-theoretic statements &mdash; they predict which observation sets a policy can actually learn from.</p>
+
+<h3>Slide 21 &middot; Backup Policy in Simulation (V3 vs V3b) <span class="t">(~35 s)</span></h3>
+<p>This slide is the backup policy in simulation. The interesting part is the V3-to-V3b comparison.</p>
+<p>V3 reached only 66.5 percent survival. We changed <em>one</em> parameter &mdash; the displacement budget, from 0.40 to 0.50 meters. That single change fixed two failure modes at once: hand collisions dropped five-fold, and survival rose to 91 percent. One parameter, both failure modes.</p>
+
+<h3>Slide 22 &middot; HIL-SERL Negative Result <span class="t">(~50 s)</span></h3>
+<p>And now the negative result &mdash; HIL-SERL on the real robot.</p>
+<p>We tried to run the same online RL on the real robot. It failed. The moment the actor unfreezes, the policy diverges &mdash; the action norm jumps from 0.05 to 0.6, and the end-effector flies to the workspace edge.</p>
+<p>Our leading hypothesis: under 50 demonstrations, a sparse reward, and short episodes, the critic's value surface is too flat &mdash; the gradient direction becomes essentially arbitrary. HIL-SERL needs high real-robot throughput to calibrate that surface; at 10 hertz, we don't have it.</p>
+<p>We report this as a methodological negative result. It is the direct reason the real-robot path uses behavior cloning and HG-DAgger, not online RL.</p>
+</section>
+
+<section>
+<h2>&sect;5 Real-Robot Results <span style="font-weight:normal;font-size:11pt;color:#8a8178">(~3 min)</span></h2>
+
+<h3>Slide 23 &middot; &sect;5 divider <span class="t">(~5 s)</span></h3>
+<p>Now the real-robot results &mdash; the core of the thesis.</p>
+
+<h3>Slide 24 &middot; Real-Robot System Setup <span class="t">(~35 s)</span></h3>
+<p>This is the real-robot system. It is a distributed architecture: a real-time PC runs the 1-kilohertz control loop, and a GPU workstation runs the policies, the vision, and the supervisor. Control and computation are decoupled.</p>
+<p>The encoder bias is injected at two points &mdash; B, in the control law, and D, in the HTTP interface &mdash; so the injection faithfully reproduces the causal chain.</p>
+
+<h3>Slide 25 &middot; HG-DAgger Convergence <span class="t">(~35 s)</span></h3>
+<p>Here is the HG-DAgger convergence. The chart shows the human intervention rate over three iterations, for the three tasks.</p>
+<p>All three start needing frequent intervention &mdash; around 40 to 50 percent &mdash; and all three converge by iteration two, below 5 percent. The matrix on the next slide uses these converged checkpoints.</p>
+
+<h3>Slide 26 &middot; &#9733; 4-Column Bias Matrix <span class="t">(~75 s &mdash; core, slow down)</span></h3>
+<p>This is the central result of the thesis &mdash; the train-by-test bias matrix, on all three real-robot tasks. Let me read it row by row.</p>
+<p>First row: trained without bias, tested without bias &mdash; everything works, near 100 percent.</p>
+<p>Second row: trained without bias, tested <em>with</em> bias &mdash; this is the collapse. Success drops by more than half. A clean-trained policy simply cannot handle the bias.</p>
+<p>Third row: trained <em>with</em> bias, tested without bias &mdash; and success is unchanged from the first row. This matters: bias-aware training has <em>no side-effect</em>. It does not hurt clean performance.</p>
+<p>Fourth row: trained with bias, tested with bias &mdash; and success recovers, back into the usable range. This is the payoff. Random-bias training is necessary, it is sufficient, and it is side-effect-free.</p>
+<p>There is still a residual gap &mdash; the fourth row sits below the third. Closing that gap is the most direct piece of future work. The three videos are one successful example per task, under bias.</p>
+
+<h3>Slide 27 &middot; Full System in Operation <span class="t">(~25 s)</span></h3>
+<p>And here is the full system running. <span class="cue">[play video, ~8 s]</span> On the left, the monitor view; on the right, the real robot.</p>
+<p>The task policy performs pickup under random bias; when a hand approaches, the supervisor switches to backup; HOMING resets the pose, and the task resumes &mdash; same episode, no manual intervention.</p>
+</section>
+
+<section>
+<h2>&sect;6 Conclusion <span style="font-weight:normal;font-size:11pt;color:#8a8178">(~1.5 min)</span></h2>
+
+<h3>Slide 28 &middot; &sect;6 divider <span class="t">(~5 s)</span></h3>
+<p>To conclude.</p>
+
+<h3>Slide 29 &middot; Conclusion &mdash; Three Contributions <span class="t">(~50 s)</span></h3>
+<p>Three contributions.</p>
+<p>First, <em>theory</em> &mdash; I formalized encoder bias as a hidden variable in a POMDP, with the one-source-three-effect causal chain and two identifiability propositions.</p>
+<p>Second, <em>method</em> &mdash; the task-plus-backup, sim-and-real dual-path framework, built on the two mechanisms: observation augmentation and random-bias training.</p>
+<p>Third, <em>empirics</em> &mdash; the 4-column bias matrix on three real-robot tasks, plus the methodological negative result on HIL-SERL.</p>
+<p>The main limitations: the real-robot loop still uses a privileged TCP channel; the bias is single-joint and episode-constant; and it is one platform with three tasks.</p>
+
+<h3>Slide 30 &middot; Future Work <span class="t">(~30 s)</span></h3>
+<p>Three directions for future work. The most direct is a two-step ablation on the real robot, to close the identifiability loop. Second, extending to multi-joint and time-varying bias. And third, using a vision-language model to chain the three short-horizon tasks into one long-horizon task.</p>
+
+<h3>Slide 31 &middot; Thank You <span class="t">(~5 s)</span></h3>
+<p>That concludes my presentation. Thank you for your attention &mdash; I am happy to take your questions.</p>
+</section>
+
+<div class="foot">Total &asymp; 17 min. Buffer for Q&amp;A and pacing. &mdash; To export PDF: open this file in a browser, then Cmd+P &rarr; Save as PDF.</div>
+
+</body>
+</html>

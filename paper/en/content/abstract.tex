@@ -1,0 +1,36 @@
+% Abstract — German Kurzfassung + English Abstract (IAS template)
+\cleardoublepage
+
+% --- German abstract (Stuttgart typically requires a Kurzfassung) ---
+\begin{otherlanguage}{ngerman}
+\chapter*{Kurzfassung}
+\addcontentsline{toc}{chapter}{Kurzfassung}
+
+Eine Encoder-Kalibrierungsabweichung in Industrierobotern erzeugt einen systematischen Fehler, der gleichzeitig den Regelkreis (über eine fehlerhafte Jacobi-Matrix) und die Zustandsbeobachtung (über eine fehlerhafte Vorwärtskinematik) verfälscht und den Roboter von einem vollständig beobachtbaren Markov-Entscheidungsprozess (MDP) zu einem partiell beobachtbaren MDP (POMDP) herabstuft. Diese Arbeit untersucht, wie sich unter einer unbekannten Encoder-Kalibrierungsabweichung eine robuste Manipulationsleistung ohne Stillstandszeit für eine Neukalibrierung aufrechterhalten lässt.
+
+Wir formalisieren das Problem als POMDP, in dem der Abweichungsvektor als episodenweise latente Variable den wahren Gelenkzustand unbeobachtbar macht. Eine Beobachtbarkeitsanalyse zeigt, dass übliche propriozeptive Beobachtungen verschiedene Abweichungszustände nicht unterscheiden können, eine Erweiterung um ein externes Signal der Endeffektorposition die näherungsweise Beobachtbarkeit jedoch wiederherstellt --- wodurch der POMDP wieder auf einen mit gängigen Reinforcement-Learning-Algorithmen lösbaren MDP reduziert wird.
+
+Darauf aufbauend schlagen wir ein zweiteiliges System vor: (1)~eine \emph{robuste Aufgabenstrategie}, die in der Simulation mit Reinforcement Learning from Prior Data (RLPD) unter einer randomisierten Abweichung validiert wird (Erfolgsquote 92--100\,\% über den Bereich $[0, 0.3]$\,rad einer Greifaufgabe) und auf dem realen Roboter mittels Imitationslernen (Behavior Cloning und Human-Gated DAgger) eingesetzt wird, da der geringe Datendurchsatz Online-RL instabil macht; und (2)~eine \emph{Backup-Sicherheitsstrategie}, die menschliche Bediener während des Human-in-the-Loop-Trainings durch aktive Kollisionsvermeidung schützt. Domain Randomization überbrückt die Sim-to-Real-Lücke der verrauschten Handerkennung.
+
+Ablationsstudien bestätigen, dass das externe Positionssignal für eine abweichungsrobuste Leistung notwendig ist. Zudem stellen wir eine Einsatzarchitektur für den realen Roboter (Franka Panda) vor, einschließlich eines Fehlerinjektionsschemas mit zwei Injektionspunkten, das die Kausalkette der Abweichung auf realer Hardware getreu reproduziert.
+
+\medskip
+\noindent\textbf{Stichwörter:} Encoder-Kalibrierungsabweichung, POMDP, Reinforcement Learning, fehlertolerante Manipulation, Sim-to-Real-Transfer
+\end{otherlanguage}
+
+% --- English abstract ---
+\begin{otherlanguage}{english}
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+
+Encoder calibration bias in industrial robots introduces a systematic error that simultaneously corrupts both the control loop (via incorrect Jacobian computation) and the state observation (via incorrect forward kinematics), degrading the robot from a fully observable Markov Decision Process (MDP) to a Partially Observable MDP (POMDP). This thesis addresses the challenge of maintaining robust manipulation performance under unknown encoder bias without requiring downtime for recalibration.
+
+We first formalize the encoder bias problem as a POMDP, where the bias vector acts as an episode-level latent variable that renders the true joint state unobservable. Through observability analysis, we show that standard proprioceptive observations are insufficient to distinguish different bias conditions, and that augmenting the observation with an external end-effector position signal restores approximate observability---effectively reducing the POMDP back to an MDP that can be solved with standard reinforcement learning algorithms.
+
+Building on this insight, we propose a two-component system: (1)~a \emph{robust task policy} that is validated in simulation with Reinforcement Learning from Prior Data (RLPD) under randomized encoder bias---achieving a 92--100\% success rate across the full bias range $[0, 0.3]$\,rad on a block-grasping task---and deployed on the real robot via imitation learning (behavior cloning plus human-gated DAgger), since the low real-robot data throughput makes online RL unstable; and (2)~a \emph{backup safety policy} that protects human operators during human-in-the-loop training by performing active collision avoidance when a hand enters the shared workspace. Domain randomization on the backup policy bridges the sim-to-real gap for noisy hand detection.
+
+Ablation studies confirm that the external position signal is necessary for bias-robust performance, validating the theoretical observability analysis. We further present a real-robot deployment architecture for the Franka Panda, including a dual-injection-point fault injection scheme that faithfully reproduces the encoder bias causal chain on physical hardware.
+
+\medskip
+\noindent\textbf{Keywords:} encoder bias, POMDP, reinforcement learning, fault-tolerant manipulation, sim-to-real transfer
+\end{otherlanguage}

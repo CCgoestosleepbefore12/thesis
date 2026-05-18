@@ -19,6 +19,7 @@
 *.swp
 .vscode/
 .idea/
+.claude/
 
 # Python (if any scripts)
 __pycache__/

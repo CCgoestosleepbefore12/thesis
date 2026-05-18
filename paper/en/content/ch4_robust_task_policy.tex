@@ -1,0 +1,200 @@
+% Chapter 4: Task Policy: Method Design and Shared Network Architecture
+
+\chapter{Task Policy: Method Design and Shared Network Architecture}\label{ch:task_policy}
+
+\section{Motivation of the Method Design}\label{sec:task_method_motivation}
+
+\cref{ch:problem_formulation} characterized the structure of the encoder bias problem through the physical causal chain and the POMDP formalization, and gave, through the observability analysis, a sufficient condition for ``$\vect{b}$ being information-theoretically identifiable.'' This section turns these theoretical conclusions into three concrete method-design choices, and briefly explains the basis of each choice and the corresponding sections.
+
+\paragraph{Design choice 1: observation-space augmentation} According to \cref{prop:non_identifiable}, relying only on the basic proprioceptive observation---in which the joint-angle reading $\vect{q}+\vect{b}$ and the TCP position $\text{FK}(\vect{q}+\vect{b})$ derived from it via forward kinematics are both corrupted by the bias, while the joint velocity (the time derivative of the encoder reading, in which the static bias $\dot{\vect{b}}=\vect{0}$ cancels out) and the gripper opening (which comes from the control command rather than the encoder) are unaffected by the bias---\emph{cannot} distinguish different pairs $(\vect{q}_{\text{true}}, \vect{b})$; whereas \cref{prop:identifiable} shows that introducing an external position observation $\vect{o}_{\text{real}}$ independent of the encoder can break the translational symmetry between $(\vect{q}_{\text{true}}, \vect{b})$ and make the system approximately identifiable. Therefore, the first design choice of this thesis is to \textbf{explicitly add an external position signal to the observation}, extending it to a 25-dimensional observation space (containing the independent external TCP and the hand state, among other components). The concrete implementation is given in \cref{sec:obs_design}.
+
+\paragraph{Design choice 2: randomized-bias training} \cref{subsec:identifiability_vs_solvability} further points out that even when the information is sufficient, the optimal policy is still a function \emph{conditioned on the bias}: for different $\vect{b}$, $\pi^\star$ must output different compensating actions (see \cref{eq:conditional_policy}). If the training process is exposed only to a single fixed $\vect{b}$, the policy can only learn ``single-point conditioning'' near that point, and produces over-compensation at other points of the bias distribution (especially at $\vect{b}=\vect{0}$). Therefore, the second design choice of this thesis is to \textbf{train by randomly sampling the bias per episode from the bias distribution $P(\vect{b})$}, exposing the policy to the entire bias distribution. This idea is in principle cognate with the domain randomization adopted by Tobin et al.\ in visual sim-to-real~\cite{tobin2017domain}---both ``let the policy see the distribution of the future deployment environment during training.'' \cref{sec:random_bias} will describe randomized-bias training in detail, and the fixed-bias baseline experiment of \cref{sec:exp_h2} will provide direct empirical evidence of the over-compensation of single-point conditioning.
+
+\paragraph{Design choice 3: the dual-end paradigm of simulation validation and real-robot deployment} The first two choices answer ``what to observe'' and ``what distribution to train on,'' but still leave the execution-level question of ``where to train and with what algorithm.'' This thesis adopts a dual-end paradigm of \textbf{validating the theory in simulation and deploying by imitation on the real robot}, jointly determined by the three factors of \emph{observation modality, data scale, and safety constraint}.
+
+\emph{On the simulation side}, the HIL-SERL framework of Luo et al.~\cite{luo2025hilserl} (based on the RLPD of Ball et al.~\cite{ball2023rlpd} with human-in-the-loop intervention) is adopted to validate the observability propositions and the randomized-bias robust training (the H1--H3 experiments), with the concrete training protocol given in \cref{sec:sim_task_train}.
+
+\emph{On the real-robot side}, because under the small-data condition of a sparse reward and a $50$--$200$ demo scale the actor drifts substantially once it is unfrozen in the SAC online stage (a thesis-level negative result, detailed in \cref{subsec:hilserl_failure}), we switch to the HG-DAgger of Kelly et al.~\cite{kelly2019hgdagger} (the idea of human-intervention imitation learning originates from the query-by-policy paradigm of the DAgger of Ross et al.~\cite{ross2011dagger}; both HIL-SERL and HG-DAgger are human-initiated variants): an initial policy obtained by BC pretraining is then corrected by operator intervention, with the concrete training protocol given in \cref{sec:real_task_deploy}. The two ends are consistent at the shared method level (25-dimensional observation $+$ shared network architecture $+$ sparse reward), and differ only in the training algorithm and the concrete protocol.
+
+\textbf{Simplification of the real-robot observation and future work.} The real-robot deployment observation is further simplified to $14$ dimensions (detailed in \cref{subsec:real_obs}), in which the encoder-bias path does not yet enter the observation channel, and the TCP signal comes uniformly from an external independent channel---corresponding to the ``success signal path'' of \cref{prop:identifiable} already validated in simulation. This simplification lets the first real-robot run focus on the sim-to-real deployment pipeline and the end-to-end success-rate validation under fault injection (the $4$-column success-rate matrix of the three tasks jointly with the backup in \cref{sec:real_experiments}); the bias-robustness loop at the real-robot level---feeding both the ``corrupted encoder signal'' and the ``external position signal'' into real-robot training simultaneously---is left as the two-step future-work ablation of \cref{ch:conclusion}.
+
+\paragraph{Summary} The three design choices above can be concisely mapped to the ``theory--constraint--method'' correspondence shown in \cref{tab:method_mapping}. The subsequent sections develop the concrete implementation in this order.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Mapping from the theoretical analysis of \cref{ch:problem_formulation} and the practical constraints to the method design of this chapter}
+  \label{tab:method_mapping}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Source & Concrete basis & Method design & Section \\
+    \midrule
+    Theoretical conclusion & \cref{prop:identifiable} (identifiability) & Observation-space augmentation (25D) & \cref{sec:obs_design} \\
+    Theoretical conclusion & \cref{subsec:identifiability_vs_solvability} (conditional compensation) & Randomized-bias training & \cref{sec:random_bias} \\
+    Practical constraint & Visual sim-to-real gap & Real-robot deployment and the IL path & \cref{sec:real_task_deploy} \\
+    Practical constraint & Sparse-reward exploration difficulty (simulation side) & HIL-SERL (demo $+$ HIL bootstrap) & \cref{sec:sim_task_train} \\
+    Practical constraint & Real-robot sparse $+$ small-data SAC drift & BC pretrain $+$ HG-DAgger & \cref{sec:real_task_deploy} \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\section{Observation Space Design}\label{sec:obs_design}
+
+\subsection{Composition of the Observation Vector}\label{subsec:obs_vector}
+
+The low-dimensional state observation vector $\vect{o}_t \in \mathbb{R}^{25}$ of the task policy is formed by the sequential concatenation of seven groups of components (\cref{tab:obs_25d}): the first $18$ dimensions come from the robot's proprioceptive path (encoder readings and control commands), the middle $3$ dimensions are the independent external TCP position, and the last $4$ dimensions are the hand state, used to switch at runtime to the backup avoidance policy of \cref{sec:backup_sim_train}. The noise modeling of $\vect{o}_\text{real}$ and the abstraction of the TCP localization scheme are given in \cref{subsec:obs_image_tcp}.\footnote{At the simulation-implementation level the environment interface is a $31$-dimensional default implementation, in which the block position $\vect{o}_\text{block}$ and the target-plate position $\vect{o}_\text{plate}$ are reset per episode to deterministic positions in the experimental scenarios of this chapter, and are constant channels for the policy. To avoid giving the reader the impression that this method depends on the ground-truth object positions, and to align with the simplified real-robot observation (see \cref{sec:real_task_deploy}), this thesis describes the observation space in the $25$-dimensional form with the two constant channels removed---the gradient of the constant dimensions is always zero, and the quantitative results are equivalent to the original $31$-dimensional implementation (provided that the input normalization treats the constant channels specially: this work guarantees, through the const-channel guard in \texttt{compute\_dataset\_stats.py}, that the min-max normalization does not produce a NaN on the constant channels, see \cref{subsec:three_tasks}).}
+
+\cref{tab:obs_25d} also annotates two orthogonal properties of each component---\emph{whether it is corrupted by the bias $\vect{b}$} and \emph{its relevance to the task goal}. The latter is divided into four classes: the \textbf{directly relevant} ones ($\vect{o}_\text{real}$ and $\text{FK}(\vect{q}+\vect{b})$) directly participate in the pose decision; the \textbf{indirectly relevant} joint angle $\vect{q}+\vect{b}$ is used only when joint limits or geometric constraints are triggered; the \textbf{structural} joint velocity and gripper opening mainly serve the smoothness and state closure of the control loop; and the \textbf{runtime-safety-relevant} $h_\text{active}$ and $\vect{p}_\text{hand}$ do not enter the task reward gradient---their role is to let the task policy and the backup avoidance policy of \cref{sec:backup_sim_train} share the same perception pipeline, and to be used at runtime by the distance criterion as the basis for policy switching (although the task policy can ``see'' the hand, it does not thereby learn avoidance; the avoidance behavior is borne entirely by the backup policy after the switch). This classification reveals the core design idea of this section: among the two directly task-relevant position quantities, $\text{FK}(\vect{q}+\vect{b})$ is corrupted and $\vect{o}_\text{real}$ is uncorrupted---it is precisely this set of \emph{directly relevant and mutually inconsistent} position signals that provides the policy with the information source for implicitly identifying $\vect{b}$.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Composition of the 25-dimensional state observation of the task policy}
+  \label{tab:obs_25d}
+  \small
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}clclcc@{}}
+    \toprule
+    Index & Component & Dim & Source & Bias-corrupted & Task relevance \\
+    \midrule
+    $[0, 6]$   & Joint angle $\vect{q}+\vect{b}$ & 7 & Encoder reading & Yes & Indirect \\
+    $[7, 13]$  & Joint velocity $\dot{\vect{q}}$ & 7 & Time difference of encoder reading & No & Structural \\
+    $14$       & Gripper opening & 1 & Control command & No & Structural \\
+    $[15, 17]$ & TCP position $\text{FK}(\vect{q}+\vect{b})$ & 3 & Biased forward kinematics & Yes & Direct \\
+    $[18, 20]$ & Real TCP $\vect{o}_\text{real}$ & 3 & External localization $+$ $5$\,mm noise & No & Direct \\
+    $21$       & Hand activation $h_\text{active}$ & 1 & Visual detection pipeline & No & Runtime safety \\
+    $[22, 24]$ & Hand position $\vect{p}_\text{hand}$ & 3 & Visual detection $+$ D455 depth & No & Runtime safety \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection{Information Paths}\label{subsec:obs_dataflow}
+
+\cref{fig:obs_dataflow} illustrates the flow of the 25-dimensional observation along two independent paths (the corruption marks are shown by the red labels in the figure). It should be noted that the 25 dimensions can be further divided by role into an \emph{identification-relevant} part and a \emph{runtime-safety} part: the former contains all $18$ dimensions of the encoder path plus the external independent TCP $\vect{o}_\text{real}$ ($21$ dimensions in total), and is the entire basis of the identifiability argument required by \cref{prop:identifiable}---a single independent external position signal suffices to break the translational symmetry of $(\vect{q}_\text{true}, \vect{b})$; the latter contains the hand activation $h_\text{active}$ and the hand position $\vect{p}_\text{hand}$, $4$ dimensions in total, and serves only the distance-triggered switching between the task policy and the backup policy, not participating in the identifiability argument. The joint observation along the two paths makes the system satisfy the sufficient condition for approximate identifiability---in principle, the policy can implicitly recover $\vect{b}$ by comparing the inconsistency between $\vect{q}+\vect{b}$ and $\vect{o}_\text{real}$, and accordingly output the conditional compensating action required by \cref{subsec:identifiability_vs_solvability}; its quantitative error is bounded by the noise $\epsilon = 5\,$mm of $\vect{o}_\text{real}$ and the condition number $\kappa(\mat{J})$ of the manipulator Jacobian, and the concrete upper bound is not elaborated on in this thesis. This thesis imposes no explicit constraint on the estimation structure (such as a Kalman filter or a dedicated $\vect{b}$-prediction head), and leaves it to end-to-end optimization to organize on its own.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_4_1_obs_dataflow.png}
+  \caption{Illustration of the information paths of the 25-dimensional observation space. In the encoder path (left, 18D), the joint angle and the TCP position derived from it are corrupted by the bias $\vect{b}$, while the joint velocity and the gripper opening are unaffected; the external observation path (right, 7D) contains the independent TCP and the hand information, all decoupled from the encoder. The two signal paths converge at the policy network, and in principle the policy can implicitly recover $\vect{b}$ from the inconsistency between $\vect{q}+\vect{b}$ and $\vect{o}_\text{real}$.}
+  \label{fig:obs_dataflow}
+\end{figure}
+
+\subsection{Why the Corrupted Proprioception Is Retained}\label{subsec:obs_keep_contam}
+
+A natural question is: since $\vect{q}+\vect{b}$ and $\text{FK}(\vect{q}+\vect{b})$ are already corrupted by the bias, why not directly remove them and use only $\vect{o}_\text{real}$ as the sole source of the TCP? This thesis chooses to retain both, based on two considerations.
+
+\textbf{Information completeness.} According to the analysis of \cref{subsec:identifiability_vs_solvability}, the premise for the policy to be able to identify $\vect{b}$ is that it simultaneously holds the ``corrupted encoder signal'' and the ``independent external position signal''---it is the \emph{difference} between the two that carries the bias information. If the former is removed, the policy is left with only the single path $\vect{o}_\text{real}$, and in fact loses the other half of the observation needed to infer $\vect{b}$.
+
+\textbf{Runtime fault tolerance.} A real-robot external localization system (ArUco/AprilTag, OptiTrack, etc.) may experience brief occlusion, marker loss, or communication jitter; retaining the proprioception path means that when $\vect{o}_\text{real}$ is temporarily unavailable, the policy can still fall back to biased behavior that relies on proprioception alone, rather than failing completely.
+
+\subsection{Generalized Treatment of Image Observation and TCP Localization}\label{subsec:obs_image_tcp}
+
+\paragraph{Image observation.} The task policy additionally receives two RGB image streams from a front-view camera (global scene view) and a wrist camera (local gripper view), which are encoded by a \emph{frozen} DINOv3-S (ViT-S/16, about $22$\,M frozen parameters, self-supervised pretrained on LVD-1689M)~\cite{simeoni2025dinov3} and then share the backbone with the $25$-dimensional state observation (detailed in \cref{sec:network}). The significant gap between the simulated rendering and the real camera in texture, lighting, and noise distribution is precisely the direct basis on which \cref{sec:task_method_motivation} argued that ``real-robot deployment requires continued learning on the real robot.''
+
+\paragraph{Noise modeling of \texttt{real\_tcp}.} In simulation training, $\vect{o}_\text{real}$ is obtained by superimposing $\mathcal{N}(\vect{0}, (0.005\,\text{m})^2\mathbf{I})$ Gaussian noise on the MuJoCo scene ground truth. The $5\,\text{mm}$ scale matches the order of the measured median error of the real-robot ArUco calibration of this thesis (the concrete calibration procedure is given in \cref{ch:real_chapter}), in order to reduce the performance degradation caused by unmodeled noise during sim-to-real transfer.
+
+\paragraph{Abstraction of the TCP localization scheme.} This chapter does not bind $\vect{o}_\text{real}$ to a concrete implementation---the optional schemes include ArUco or AprilTag visual markers, OptiTrack optical motion capture, etc., as long as the path satisfies three minimal requirements: it is independent of the joint encoders, it can give the TCP position in metric units, and its typical noise scale is comparable to $5$\,mm. The concrete selection and calibration details are given in \cref{ch:real_chapter}.
+
+\section{Randomized-Bias Training}\label{sec:random_bias}
+
+\cref{subsec:identifiability_vs_solvability} pointed out that even when the observation space already satisfies the identifiability condition, the optimal policy must still output different compensating actions conditioned on the bias $\vect{b}$ (\cref{eq:conditional_policy}). If the training process exposes the policy only to a single fixed $\vect{b}_0$, the policy can at most learn ``single-point conditioning'' near that point---once the true bias of the deployment environment deviates from $\vect{b}_0$ (especially when it returns to the calibrated state $\vect{b}=\vect{0}$), the policy over-corrects along the compensation direction learned during training, producing an \emph{over-compensation} phenomenon. This thesis circumvents this problem by randomly sampling the bias per episode.
+
+\paragraph{Training protocol.} The bias is treated as an episode-level environment parameter: at each reset, $b_i \sim \mathcal{U}[0, b_{\max}]$ ($i = 1, \dots, 7$) is sampled independently for each joint, and remains constant within the episode until the next reset; this thesis takes $b_{\max} = 0.25\,\text{rad}$ (about $14^\circ$), significantly larger than the typical bias magnitude of industrial robots surveyed in \cref{sec:bias_sources}, so as to apply a relatively aggressive stress test to the policy. The sampled $\vect{b}$ acts on the encoder readings and the controller reference values inside the simulation environment in the fault-injection manner described in \cref{sec:sim_implementation}, and is \emph{not provided to the policy as any form of additional input}---the policy can only implicitly perceive the bias through the 25-dimensional observation defined in \cref{sec:obs_design}.
+
+\paragraph{Connection with domain randomization.} This practice is in principle cognate with the domain randomization proposed by Tobin et al.~\cite{tobin2017domain}: both rely on the basic idea of ``letting the policy see samples of the target deployment distribution during training.'' But an essential difference must be pointed out: the visual parameters randomized by Tobin et al.\ are \emph{redundant variables} for the policy (they should be ignored), whereas the $\vect{b}$ randomized in this thesis is a latent variable on which the policy \emph{must condition}---according to the conditional-compensation requirement of \cref{subsec:identifiability_vs_solvability}, the optimal policy must output different actions for different $\vect{b}$. The two are opposite information-theoretic paradigms, cognate only in the surface idea of ``having seen the deployment distribution during training''; the randomization goal of this thesis is to let the policy learn to implicitly recover and condition on the latent variable from the observation, rather than to acquire an invariance to it. Another difference is that randomized-bias training optimizes the \emph{expected} return over the bias distribution rather than the worst-case return in the sense of a robust MDP---this thesis is concerned with the average performance across real-robot instances, not the guaranteed performance in the worst case.
+
+\paragraph{Experimental preview of the fixed-bias baseline.} To directly validate the hypothesis ``single-point conditioning $\to$ zero-bias over-compensation,'' \cref{sec:exp_h2} designs a controlled experiment of two training groups, fixed bias and random bias: under the same network structure and training hyperparameters, the two groups of policies are exposed respectively to $b_i = 0.2\,\text{rad}$ (fixed, for all $i = 1, \dots, 7$) and $b_i \sim \mathcal{U}[0, 0.25\,\text{rad}]$ (random), and are then evaluated for grasping success rate respectively at $\vect{b}=\vect{0}$ and at several bias values not seen during training, so as to characterize the generalization difference of the two training schemes over the bias distribution.
+
+The concrete forms of the network architecture and the training hyperparameters are given uniformly in \cref{sec:network}, applicable to both the simulation and the real-robot paths of this chapter.
+
+\section{Network Architecture and Training Objective}\label{sec:network}
+
+The task policy described in this chapter shares the same network architecture at both the simulation and the real-robot ends---a \emph{shared encoder}, three \emph{independent network heads}, and the corresponding \emph{training-loss definitions}. This section gives these concrete forms in turn (\cref{fig:network_arch}); the concrete training protocols (demo warmup, online mixed sampling, HG-DAgger iteration, etc.) are given respectively in \cref{sec:sim_task_train} (simulation HIL-SERL) and \cref{sec:real_task_deploy} (real-robot BC $+$ HG-DAgger).
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_4_2_network_arch.png}
+  \caption{Network architecture of the task policy. The three input streams (simulation $25$-dimensional / real-robot $14$-dimensional state $+$ front-view and wrist $128\times 128$ RGB) are each processed by their own encoder and then concatenated channel-wise into a $768$-dimensional shared feature $\vect{h}$; the three heads share $\vect{h}$ as input but have different outputs and training losses---the continuous Actor produces a 6-dimensional Cartesian end-effector action, the Twin Critic outputs two scalar Q-values (the minimum is taken to suppress overestimation), and the discrete Gripper Critic outputs a 3-dimensional Q-value to select the gripper action. The DINOv3-S backbone remains frozen during training, and only the subsequent projection layers, the state encoder, and the three heads are updated. Simulation HIL-SERL trains all four losses, whereas the real-robot BC stage trains only the continuous Actor (the critic and the temperature parameter serve as ckpt-schema placeholders).}
+  \label{fig:network_arch}
+\end{figure}
+
+\paragraph{Input encoding.} The processing pipeline of the three input streams is drawn in full in \cref{fig:network_arch}; here only the key points are stated: the simulation $25$-dimensional (real-robot $14$-dimensional) state observation is min-max normalized per dimension to $[-1, 1]$ and then projected by Linear $+$ LN $+$ Tanh to $256$ dimensions; the $128 \times 128$ front-view and wrist RGB images are each normalized by the ImageNet mean and standard deviation and then fed into the \emph{frozen} DINOv3-S backbone~\cite{simeoni2025dinov3} (ViT-S/16, about $22$\,M frozen parameters), and the output patch-token sequence is reshaped into a $384 \times 8 \times 8$ spatial feature map ($128/16 = 8$ patch grid), then passed through SpatialLearnedEmbeddings with $F = 8$ learnable spatial kernels for a channel-wise weighted summation---each $(c, f)$ pair ($384 \times 8$ in total) outputs one scalar $\sum_{h, w} \text{feat}_{c, h, w} \cdot \text{kernel}_{c, h, w, f}$---yielding a $C \cdot F = 3072$-dimensional vector, which is finally compressed to a $256$-dimensional latent through Dropout$(0.1) +$ Linear$(3072 \to 256) +$ LN $+$ Tanh. Relative to global average pooling, this spatial-pooling design retains the discriminative power of $F$ independent spatial patterns (avoiding merging ``block in the upper left vs.\ lower right'' into the same representation); relative to spatial softmax, it can learn a complex attention pattern rather than a single keypoint. The three $256$-dimensional features are concatenated channel-wise into the $768$-dimensional shared feature $\vect{h}$. The DINOv3-S backbone parameters are not updated during either the simulation or the real-robot training.
+
+\paragraph{The three network heads.} The three heads all use a two-layer MLP as their main body (hidden dimensions $[256, 256]$, activation function ReLU), but their inputs, outputs, and training losses differ. The \emph{continuous Actor} takes the shared feature $\vect{h}$ as input, and after a $[768, 256, 256]$ MLP, attaches two Linear$(256 \to 6)$ heads that output the mean $\vect{\mu}$ and the log standard deviation $\log\vect{\sigma}$ respectively, and samples a 6-dimensional continuous action $\vect{a}^c \in \mathbb{R}^6$ (corresponding to a 3-dimensional end-effector position increment and a 3-dimensional end-effector orientation increment) through a \texttt{TanhMultivariateNormalDiag} distribution. The \emph{Twin Critic} contains two independently initialized Q-networks $Q_{\theta_1}, Q_{\theta_2}$, each taking $[\vect{h};\, \vect{a}^c]$ as input and outputting a scalar $Q \in \mathbb{R}$ through a $[774, 256, 256, 1]$ MLP, with the minimum of the two taken during training to suppress value overestimation (Clipped Double Q-Learning). The \emph{discrete Gripper Critic} takes the shared feature as input and outputs a 3-dimensional $Q$-value vector through a $[768, 256, 256, 3]$ MLP, corresponding to the three discrete gripper actions numbered $\{0{:}\text{close},\, 1{:}\text{hold},\, 2{:}\text{open}\}$ in the code, with $\arg\max$ taken as the greedy policy during sampling. The temperature parameter $\alpha$ is parameterized by a learnable $\log\alpha$ and automatically tuned (initial value $\alpha_0 = 0.01$), and is assigned to an independent optimizer parameter group.
+
+\paragraph{Training objective.} The continuous branch follows the standard three losses of SAC (the background of entropy regularization and automatic temperature tuning is given in \cref{ch:related_work}):
+\begin{align*}
+  L_Q &= \mathbb{E}_{(s,\vect{a},r,s')\sim\mathcal{B}}\!\left[\left(Q_\theta(s,\vect{a}) - y\right)^2\right], \quad y = r + \gamma(1-d)\!\left[\min_i Q_{\bar{\theta}_i}(s', \vect{a}') - \alpha \log \pi_\phi(\vect{a}'|s')\right], \\
+  L_\pi &= \mathbb{E}_{s\sim\mathcal{B},\, \vect{a}\sim\pi_\phi}\!\left[\alpha \log \pi_\phi(\vect{a}|s) - \min_i Q_{\theta_i}(s, \vect{a})\right], \\
+  L_\alpha &= -\,\mathbb{E}\!\left[\alpha\left(\log \pi_\phi(\vect{a}|s) + \bar{\mathcal{H}}\right)\right],
+\end{align*}
+where $\vect{a}' \sim \pi_\phi(\cdot|s')$, $\bar{\mathcal{H}}$ is the target entropy, and $\bar{\theta}_i$ are the target-network parameters. The discrete gripper head is trained independently with an MSE Bellman loss in the form of Double DQN:
+\begin{equation*}
+  L_{Q^g} = \mathbb{E}_{(s, a^g, r, s')\sim\mathcal{B}}\!\left[\left(Q^g_\psi(s, a^g) - y^g\right)^2\right], \quad y^g = r + \gamma(1-d)\, Q^g_{\bar{\psi}}\!\left(s',\; \arg\max_{a'} Q^g_\psi(s', a')\right),
+\end{equation*}
+where $a^g \in \{\text{close},\, \text{hold},\, \text{open}\}$ (i.e., the three discrete gripper actions corresponding to the code numbers $\{0, 1, 2\}$ in \cref{fig:network_arch} and the previous paragraph). During simulation HIL-SERL training, the gradients of all four losses are backpropagated to their respective head parameters and the trainable part of the shared encoder (the DINOv3-S backbone remains frozen), and the four parameter groups are updated synchronously by their respective Adam optimizers.
+
+The real-robot BC pretraining stage uses only the single loss $L_\text{BC} = -\mathbb{E}\left[\log \pi_\phi(\vect{a}\mid s)\right]$, and the optimizer updates only the MLP head of the continuous Actor, the state encoder, the SpatialLearnedEmbeddings, and the projection layers; the Twin Critic and the discrete Gripper Critic remain randomly initialized during BC, do not participate in gradient updates, and serve only as ckpt-schema placeholders so that a later path switch can directly \texttt{--resume} load them.
+
+\paragraph{Pointers to the training protocols.} The training protocols of sim and real (the concrete steps of demo warmup, online mixed sampling, HG-DAgger intervention iteration, etc.) are given respectively in \cref{sec:sim_task_train,sec:real_task_deploy}. The training hyperparameters shared by the two ends (learning rate, batch size, $\gamma$, $\tau$, $\alpha_0$, image augmentation, etc.) are listed in a two-column comparison form in \cref{tab:hyperparams}, and the protocol details are not repeated in this section.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Task-policy training hyperparameters (simulation HIL-SERL vs.\ real-robot BC $+$ HG-DAgger; ``---'' means not applicable)}
+  \label{tab:hyperparams}
+  \small
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    Hyperparameter & Simulation HIL-SERL & Real-robot BC $+$ HG-DAgger \\
+    \midrule
+    Total training steps & $10^5$ online & $20{,}000$ per BC iter \\
+    Demo warmup steps (offline-only pretraining) & 500 & --- \\
+    Environment steps before the first learning in the online stage & 100 & --- \\
+    UTD ratio (gradient updates per environment step) & 2 & --- \\
+    Actor weight push frequency (Learner~$\to$~Actor) & every 4 gradient steps & --- \\
+    \midrule
+    Batch size $|\mathcal{B}|$ & $256$ ($128+128$ offline/online) & $256$ \\
+    Learning rate (actor / critic / $\alpha$) & $3 \times 10^{-4}$ & $3 \times 10^{-4}$ (actor only) \\
+    Gradient clipping norm & $40.0$ & $40.0$ \\
+    Discount factor $\gamma$ & $0.97$ & --- \\
+    Target-network soft update $\tau$ & $0.005$ & --- \\
+    SAC initial temperature $\alpha_0$ & $0.01$ & --- \\
+    \midrule
+    Latent dimension / MLP hidden layers & $256$ / $[256, 256]$ & same as left \\
+    Buffer capacity (offline / online) & $10^5$ / $10^5$ & --- \\
+    Image augmentation & --- & DrQ random\_shift, pad $= 4$ \\
+    \midrule
+    BC discrete-head weight $\lambda$ & --- & $0.5$ \\
+    Tanh-Gaussian $\vect{\sigma}$ clamp range & --- & $[10^{-5},\, 10]$ \\
+    Still-frame filtering threshold \texttt{action\_norm\_min} & --- & $10^{-3}$ (CLI overrides default $10^{-6}$) \\
+    \midrule
+    HG-DAgger intervention trigger threshold & --- & enter $0.05$ / exit $0.02$ \\
+    HG-DAgger release tail \texttt{tail\_k} & --- & $10$ frames \\
+    Episodes per iteration & --- & $30$ \\
+    Stopping criterion (intervention rate $\leq 5\%$ sustained) & --- & $5$ consecutive episodes \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\section{Reward Design}\label{sec:task_reward}
+
+\paragraph{Reward function.} The task policy of this thesis uses a sparse binary reward:
+\begin{equation*}
+  r_t = \begin{cases}
+    1 & \text{if the episode reaches the success criterion at step $t$}, \\
+    0 & \text{otherwise}.
+  \end{cases}
+\end{equation*}
+In simulation training, the success criterion is given by the MuJoCo ground truth: the projected distance of the block and the target plate on the horizontal plane $\lVert \vect{p}_\text{block}^{xy} - \vect{p}_\text{plate}^{xy}\rVert < 5\,\text{cm}$, and the block $z$-coordinate $< 5\,\text{cm}$ (i.e., the block has been put down rather than suspended in mid-air). On the real robot, a \emph{manual keyboard reward protocol} is used instead of the automatic distance criterion: the operator gives a binary reward and episode control signals for each episode through four keyboard keys---\texttt{S} starts the episode, \texttt{Enter} marks success ($r=1$, $\textit{terminal}$), \texttt{Space} marks failure ($r=0$, $\textit{terminal}$), and \texttt{Backspace} discards the entire episode (setting \texttt{discard=True} so that this episode does not enter the replay buffer or the demo pickle). This protocol simultaneously handles episode-boundary control (no automatic timeout detection needed) and replay filtering (the discard signal), simplifying the real-robot data loop; the concrete implementation is given in \cref{ch:real_chapter}. Each episode terminates when any of success / failure / discard / step upper limit ($300$ steps @ $10\,\text{Hz}$, i.e., $30\,\text{s}$) is triggered; the success step produces $r_t = 1$, and the other steps are $0$. Both mechanisms give a sparse binary reward signal, differing only in the trigger source (automatic criterion in simulation vs.\ manual adjudication on the real robot), and neither provides the policy with a dense signal at the distance level.
+
+\paragraph{Feasibility of the sparse reward.} Under a general setting, a sparse reward is often hard to converge due to exploration difficulty, but two concrete constraints of this thesis make a sparse reward in fact more suitable than a dense reward.
+
+(i)~The HIL-SERL training framework of \cref{sec:sim_task_train} has already solved the most central exploration bottleneck of the sparse reward through offline demo guidance (50 successful episodes $+$ warmup) and human-in-the-loop intervention throughout training---the policy does not have to ``grope out the first success from scratch,'' as the demos and the interventions have already provided the critic with sufficient positive samples and corrective gradients. \emph{It should be pointed out that this argument applies only to simulation}: the real-robot SAC drift phenomenon reviewed in \cref{subsec:hilserl_failure} shows that even when the exploration bottleneck is solved by demo $+$ HIL, the critic may still be unable to calibrate the Q-surface due to the throughput limitation, and the actor drifts after being unfrozen; the exploration bottleneck and the accuracy of the Q-estimate are \emph{two independent bottlenecks}, and the simulation only needs to satisfy the former, whereas the real robot needs to satisfy both. The switch on the real robot to BC $+$ HG-DAgger, which does not depend on a critic, is precisely to bypass the Q-estimation bottleneck.
+
+(ii)~In addition to the exploration bottleneck, a dense reward itself has a second hidden danger under this setting: under encoder bias, a natural dense-reward candidate (such as a TCP-target distance of the form $-\lVert\text{FK}(\vect{q}+\vect{b}) - \vect{p}_\text{block}\rVert$) is itself a \emph{corrupted signal}---it depends on $\text{FK}(\vect{q}+\vect{b})$ rather than the true TCP position, so directly optimizing along this dense signal would induce the policy to hack the geometric effect of the bias into the proxy metric and deviate from the true goal (i.e., typical reward hacking, the background of which is given in \cref{ch:related_work}).
+
+Combining (i) and (ii), a sparse binary reward is the most robust choice under the setting of this thesis.

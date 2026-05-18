@@ -1,0 +1,70 @@
+% !TeX program = pdflatex
+% English master's thesis — IAS template
+% Institute of Industrial Automation and Software Engineering, University of Stuttgart
+
+\documentclass[ a4paper,
+                oneside,
+                toc=bibliography,
+                toc=listof
+                ]{scrbook}
+
+\input{settings}
+
+% Path to .bib file for BibLatex
+\addbibresource{bibliography.bib}
+
+% ===================== thesis metadata =====================
+% Select type (master) and language (english) in settings.tex
+\author{Cheng Cheng}
+\major{MSc.\ Autonome Systeme}
+\title{Hierarchical Imitation and\\ Reinforcement Learning for\\ Fault-Tolerant Manipulation}
+
+\thesisno{4005}
+\date{18.05.2026}
+\professor{Prof.\ Dr.-Ing.\ Andrey Morozov}
+\supervisor{Yuliang Ma}
+
+% \confidentialthesis{}  % uncomment if the thesis is confidential
+
+\begin{document}
+    \frontmatter
+    \makeIAStitle
+
+    \cleardoublepage
+    \currentpdfbookmark{\contentsname}{Inhalt}
+    \tableofcontents
+    \cleardoublepage
+    \listoffigures
+    \cleardoublepage
+    \listoftables
+    \cleardoublepage
+
+    % Acronyms / list of abbreviations
+    \input{content/abkuerzungen}
+    \cleardoublepage
+
+    % Abstract
+    \input{content/abstract}
+    \cleardoublepage
+
+    \mainmatter
+    % ********************************************************************
+    \input{content/ch1_introduction}
+    \input{content/ch2_related_work}
+    \input{content/ch3_problem_formulation}
+    \input{content/ch4_robust_task_policy}
+    \input{content/ch5_backup_policy}
+    \input{content/ch6_experiments}
+    % \input{content/ch7_real_robot}  % merged into Ch.6 (sim/real split)
+    \input{content/ch8_conclusion}
+    % ********************************************************************
+
+    \cleardoublepage
+    \printbibliography
+
+    % Appendix, if needed:
+    % \appendix
+    % \input{content/appendix}
+
+    \declarationOfOriginality
+\end{document}

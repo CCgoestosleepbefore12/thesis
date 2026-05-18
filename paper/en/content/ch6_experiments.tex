@@ -1,0 +1,338 @@
+% Chapter 6: Real Robot: Imitation Deployment and End-to-End Validation
+
+\chapter{Real Robot: Imitation Deployment and End-to-End Validation}\label{ch:real_chapter}
+
+\section{Introduction: The Real-Robot-Side Paradigm and Chapter Organization}\label{sec:real_intro}
+
+Continuing from \cref{sec:sim_to_real_bridge}, the simulation chapter trained the task policy with HIL-SERL and validated the observability propositions (the H1--H3 experimental loop), trained the backup policy with pure SAC $+$ DR, and completed the reward and geometry evolution V1$\to$V3$\to$V3b. This chapter grounds these two closed simulation threads in the real-robot deployment: \cref{sec:real_arch} first gives the system-level foundation (the dual-machine hardware, the B$+$D dual injection point, the equivalence of OSC and Cartesian impedance control); then \cref{sec:real_task_deploy} gives the complete protocol of the real-robot deployment of the task policy ($14$-dimensional observation, BC pretrain, HG-DAgger intervention iteration, the three-task shared pipeline, and the methodological post-mortem of the HIL-SERL real-robot failure); \cref{sec:backup_real_deploy} gives the real-robot deployment of the backup policy (the design evolution of hand detection from MediaPipe to WiLoR, the three-state FSM of the Hierarchical Supervisor, the Route A center-dist geometric alignment); \cref{sec:real_experiments} is the core experimental data of this thesis---the \textbf{$4$-column joint success-rate matrix of three tasks $\times$ \{training bias, test bias\} $2\times2$ factorial}, end-to-end validating the effectiveness of the hierarchical ``task $\oplus$ backup'' framework under encoder-bias fault injection; \cref{sec:operator_safety} closes with the operator-safety conventions, the measured precision, and an overview of the multiple rounds of P0 fixes.
+
+The correspondence with \cref{ch:sim_chapter}: the simulation chapter uses RL (HIL-SERL $+$ SAC$+$DR) to validate theoretical feasibility, and this real-robot chapter uses IL (BC$+$HG-DAgger) to accomplish the deployment landing; the two ends are aligned on the shared method layer of \cref{ch:task_policy} ($25$ vs.\ $14$-dimensional observation, the shared network architecture, the sparse reward), and differ only in the training algorithm and the concrete protocol.
+
+\section{Real-Robot System Architecture and Encoder-Bias Injection}\label{sec:real_arch}
+
+\subsection{Dual-Machine Hardware Architecture}\label{subsec:hardware}
+
+The real-robot deployment uses a decoupled architecture of two computers: the \textbf{RT PC} (a laptop carrying a PREEMPT\_RT 5.15 real-time kernel) is responsible for the low-level real-time control of the arm, and the \textbf{GPU workstation} (an RTX 3090 Ti) is responsible for policy inference, visual perception, training, and logging (\cref{fig:real_hardware}). The two machines communicate over an independent subnet (a USB network adapter, 192.168.100.0/24); the Franka control cabinet and the RT PC are connected over a direct Ethernet link (172.16.0.0/24) to guarantee $1$\,kHz real-time control.
+
+The RT PC-side stack: \texttt{libfranka 0.9.1} $+$ \texttt{franka\_ros 0.9.1} (compiled from source) $+$ the self-maintained \texttt{serl\_franka\_controllers} Cartesian impedance controller (containing the B-injection-point encoder-bias patch) $+$ the Flask \texttt{franka\_server} (an HTTP API, containing the D injection point). The GPU workstation-side stack: this thesis's \texttt{frrl} package (environment, policy, visual perception, Hierarchical Supervisor, deploy scripts) $+$ dual RealSense D455 cameras (front and wrist) $+$ a SpaceMouse teleoperation device.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_6_1_real_hardware.png}
+  \caption{The real-robot dual-machine architecture. The RT PC communicates with the Franka control cabinet over a direct Ethernet link and runs the $1$\,kHz real-time control stack; the GPU workstation communicates with the RT PC over an independent subnet and bears policy inference, visual perception, and training. The decoupling of the two machines lets the GPU-side policy iteration and the RT PC-side real-time control evolve independently.}
+  \label{fig:real_hardware}
+\end{figure}
+
+\subsection{B$+$D Dual-Injection-Point Encoder Bias}\label{subsec:bd_injection}
+
+\cref{prop:injection} has already given the two sufficient conditions for fault injection, (C1) (the control law uses $\vect{q}_\text{true} + \vect{b}$) and (C2) (the observation module returns $\vect{q}_\text{true} + \vect{b}$ and $\text{FK}(\vect{q}_\text{true} + \vect{b})$). In the simulation, both conditions are satisfied simultaneously through the ``temporary replacement-restoration'' pattern of \cref{alg:sim_step}; on the real robot, since the controller and the observation module are physically separate, injection is needed at two points respectively:
+
+\paragraph{B injection point: inside the C++ impedance controller.} The C++ impedance controller of \texttt{serl\_franka\_controllers} embeds a \texttt{RealtimeBuffer<...>} (a lock-free real-time buffer) holding the current bias, receives the bias every control cycle ($1$\,kHz) from the ROS topic \texttt{/encoder\_bias} (a custom topic, independent of the standard Franka state publishing), and replaces the original joint reading with $\vect{q}_\text{measured} + \vect{b}$ before computing the Jacobian and FK, correspondingly satisfying (C1).
+
+\paragraph{D injection point: inside the Flask franka\_server.} \texttt{franka\_server} holds the same bias state (synchronized through the same ROS topic), and returns the biased joint reading and the biased FK end-effector pose (the biased state) in the \texttt{/getstate} HTTP response, correspondingly satisfying (C2). The \texttt{/getstate\_true} endpoint retains the unbiased reading as a privileged channel, used for the \texttt{tcp\_true} field in the 14D observation of \cref{subsec:real_obs} and for the sim-to-real geometric alignment of the backup policy.
+
+\paragraph{Why B$+$D dual injection is needed.} As argued in \cref{sec:sim_implementation}, injecting the bias only on the ROS topic \texttt{/joint\_states} (the standard Franka joint-state publishing topic) is ineffective for the real-robot stack of this thesis---the impedance controller reads the robot state directly from memory through the \texttt{FrankaStateHandle} (the C++ state-access interface provided by \texttt{franka\_ros}), bypassing \texttt{/joint\_states}; the Flask server likewise does not subscribe to \texttt{/joint\_states}. The two components need independent injection in order to reproduce, at both the control layer and the observation layer, the simulation-validated bias causal chain.
+
+\paragraph{HTTP injection interface.} The GPU workstation controls the bias through three HTTP routes: \texttt{/set\_encoder\_bias} (setting the $7$-dimensional bias), \texttt{/clear\_encoder\_bias} (zeroing, called on env reset), and \texttt{/get\_encoder\_bias} (reading the current value). This thesis completed the end-to-end validation on $2026$-$04$-$15$: after \texttt{set\_encoder\_bias([0.1, 0, ..., 0])} (injecting $0.1$\,rad into J1), the arm tip physically swept by about $7$\,cm (consistent with the analytical prediction), and \texttt{/getstate} synchronously returned the biased state.
+
+\subsection{Equivalence of OSC and Cartesian Impedance Control}\label{subsec:osc_impedance}
+
+The simulation uses an OSC (Operational Space Control) controller, and the real robot uses a Cartesian impedance controller (CIC); there is a structural difference between the two, and this section gives an argument for their approximate equivalence in the small-step TCP-increment action space.
+
+The OSC control law is
+\begin{equation*}
+  \vect{\tau}_\text{OSC} = \mat{J}^\top \mat{\Lambda} \big[\mat{K}_p (\vect{x}_\text{target} - \vect{x}) + \mat{K}_d (\dot{\vect{x}}_\text{target} - \dot{\vect{x}})\big] + \text{null-space term} + \text{gravity compensation},
+\end{equation*}
+where $\mat{\Lambda} = (\mat{J}\mat{M}^{-1}\mat{J}^\top)^{-1}$ is the task-space inertia matrix. The CIC control law omits $\mat{\Lambda}$ and is expressed directly as
+\begin{equation*}
+  \vect{\tau}_\text{CIC} = \mat{J}^\top \big[\mat{K}_p (\vect{x}_\text{target} - \vect{x}) + \mat{K}_d (\dot{\vect{x}}_\text{target} - \dot{\vect{x}})\big] + \text{Coriolis and gravity compensation}.
+\end{equation*}
+The core difference between the two is the presence or absence of inertia decoupling: OSC provides full inertia decoupling in task space, and CIC does not. In the small-step TCP-increment action space used in this thesis (each step $\leq 0.03$\,m, control frequency $10$\,Hz), the joint velocity $\dot{\vect{q}}$ is always small, the gap between $\mat{\Lambda}$ and $\mat{M}_\text{eff} = \mat{J}^{-\top}\mat{M}\mat{J}^{-1}$ is less than an order of magnitude, and the torque outputs of OSC and CIC are numerically close. More crucially, the encoder bias affects the two through the \emph{same path}: $\vect{q} \to \mat{J}(\vect{q} + \vect{b}) \to$ task-space force $\to \mat{J}^\top \to$ joint torque, so the direction and the first-order magnitude of the bias effect are consistent for OSC and CIC. The difference is mainly in the second-order term (the inertia-compensation error), and the OSC used in the simulation thus serves as a \textbf{conservative bias test platform}---if a policy can cope with the bias under simulation OSC, then under real-robot CIC the bias effect is usually \emph{more significant} (because CIC lacks the $\mat{\Lambda}$ decoupling), and the policy needs an additional robustness margin to transfer successfully.
+
+\textbf{Scope of the argument.} The above equivalence does not cover near-singular configurations ($\kappa(\mat{J}) \gg 10^2$, $\mat{\Lambda}$ diverges) or high-speed motion (joint velocity $\geq 0.5$\,rad/s, the CIC Coriolis term dominates); the deployment tasks of this thesis are within the workspace far from singular points (see the workspace ROI calibration of \cref{subsec:three_tasks}) and satisfy the ``small-step'' premise under $10$\,Hz control, so neither of these two working conditions occurs.
+
+\section{Real-Robot Deployment of the Task Policy: BC pretrain $+$ HG-DAgger}\label{sec:real_task_deploy}
+
+Design choice 3 of \cref{sec:task_method_motivation} has already argued that, under the small-data condition of a real-robot sparse reward and a $50$--$200$ demo scale, the unfreezing of the actor in the SAC online stage causes the policy to drift substantially (a detailed post-mortem is given in \cref{subsec:hilserl_failure}). The real-robot stage of this thesis switches to the HG-DAgger of Kelly et al.~\cite{kelly2019hgdagger}---an initial policy based on BC pretrain plus operator-intervention correction---to accomplish the deployment and evaluation of the three tasks. This section gives, in turn, the simplified form of the real-robot observation, the BC pretrain protocol, the HG-DAgger intervention iteration protocol, the three-task deployment pipeline, and a summary of the methodology-level negative conclusion.
+
+\subsection{The Real-Robot 14-Dimensional Observation}\label{subsec:real_obs}
+
+The real-robot deployment observation is further simplified from the simulation $25$ dimensions described in \cref{sec:obs_design} to $14$ dimensions (\cref{tab:obs_real_14d}), with the path difference shown in \cref{fig:obs_real_14d}. The considerations behind the three simplifications:
+
+\begin{enumerate}
+  \item \emph{The object position is handed over to the visual path}---the target localization fully relies on the visual features of the front-view camera (consistent with the simulation observation description, see the footnote of \cref{subsec:obs_vector});
+  \item \emph{The encoder path does not enter the observation for now}---the TCP signal comes uniformly from the external independent channel (the simulation-validated ``success signal path'' of \cref{prop:identifiable}), letting the first real-robot run focus on the sim-to-real deployment pipeline and the end-to-end success-rate validation;
+  \item \emph{The hand channel is consumed externally by the supervisor}---the switching decision is made outside the policy by the Hierarchical Supervisor of \cref{sec:backup_real_deploy} according to a distance criterion.
+\end{enumerate}
+
+The simplified $14$ dimensions are aligned with the proprioceptive subset of the \texttt{ram\_insertion} task in the HIL-SERL framework, facilitating the reuse of the upstream buffer and the episode-boundary handling logic. These simplifications together cause the bias-robustness loop at the real-robot level---feeding both the ``corrupted encoder signal'' and the ``external position signal''---to be left as the two-step future-work ablation of \cref{ch:conclusion} (first validating that it fails with only \texttt{tcp\_biased}, then validating that it restores success after adding $\vect{q}+\vect{b}$).
+
+\textbf{The scope limitation thus brought about.} The ``with bias'' column of the three-task real-robot success-rate matrix in \cref{sec:real_experiments} validates the \emph{end-to-end success rate through the privileged signal path under fault injection}---that is, ``the success signal path proven feasible in sim can still run through on the real robot,'' and does \emph{not} directly validate the implicit-identification mechanism of ``corrupted encoder signal $+$ external position signal'' in \cref{prop:identifiable}; the latter is still a simulation-exclusive assertion (H2/H3), and its real-robot loop can only be closed after the two-step ablation above is completed.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Composition of the $14$-dimensional state observation of the real-robot deployment}
+  \label{tab:obs_real_14d}
+  \small
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}clcl@{}}
+    \toprule
+    Index & Component & Dim & Source \\
+    \midrule
+    $[0, 6]$  & True TCP pose (xyz $+$ quaternion xyzw) & 7 & External independent channel (bypassing the bias) \\
+    $[7, 12]$ & End-effector 6D velocity (3D linear $+$ 3D angular) & 6 & Product of the end-effector Jacobian and joint velocity $\mat{J}(\vect{q}) \cdot \dot{\vect{q}}$ \\
+    $13$      & Gripper opening $\in [0, 1]$ & 1 & Gripper state feedback \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}[
+    >={Stealth[length=2mm]},
+    font=\small,
+    keep/.style={draw, rounded corners=3pt, inner sep=5pt, align=center, fill=green!10, minimum height=0.9cm, text width=2.3cm},
+    drop/.style={draw, dashed, rounded corners=3pt, inner sep=5pt, align=center, text=gray!55, minimum height=0.9cm, text width=2.3cm},
+    rowlabel/.style={font=\bfseries\small, anchor=east},
+  ]
+    % SIM row
+    \node[rowlabel] at (-0.2, 0) {Simulation 25D};
+    \node[drop] (s1) at (2.4, 0) {\scriptsize\color{gray!55} Encoder path 18D};
+    \node[drop] (s2) at (5.4, 0) {\scriptsize\color{gray!55} Hand channel 4D};
+    \node[keep] (s3) at (8.0, 0) {\scriptsize $\vect{o}_\text{real}$ 3D};
+    % strikethrough
+    \draw[red!80, thick] (s1.north west) -- (s1.south east);
+    \draw[red!80, thick] (s1.south west) -- (s1.north east);
+    \draw[red!80, thick] (s2.north west) -- (s2.south east);
+    \draw[red!80, thick] (s2.south west) -- (s2.north east);
+
+    % REAL row
+    \node[rowlabel] at (-0.2, -1.9) {Real robot 14D};
+    \node[keep] (r1) at (2.4, -1.9) {\scriptsize \texttt{tcp\_true} 7D (xyz $+$ quat)};
+    \node[keep] (r2) at (5.4, -1.9) {\scriptsize End-effector 6D velocity};
+    \node[keep] (r3) at (8.0, -1.9) {\scriptsize gripper 1D};
+
+    % link sim->real for kept channel
+    \draw[->, green!50!black, thick] (s3.south) to[bend left=12]
+      node[midway, right, font=\scriptsize, color=green!50!black] {Extended ($+$ quat 4D)} (r1.north east);
+  \end{tikzpicture}
+  \caption{The path difference between the real-robot 14-dimensional observation and the simulation 25-dimensional observation (\cref{fig:obs_dataflow}). On the simulation side, the encoder path 18D ($\vect{q}+\vect{b}$, $\dot{\vect{q}}$, the gripper opening, $\text{FK}(\vect{q}+\vect{b})$) and the hand channel 4D ($h_\text{active}$, $\vect{p}_\text{hand}$) do not enter the observation on the real robot for now (the red crosses); only the $\vect{o}_\text{real}$ path is retained and extended into a 7D true TCP pose containing the quaternion (\texttt{tcp\_true}), which together with the end-effector 6D velocity (linear $+$ angular, computed from $\mat{J}(\vect{q}) \cdot \dot{\vect{q}}$) and the gripper opening forms 14D. $\vect{o}_\text{real}$ is the simulation-validated ``success signal path'' of \cref{prop:identifiable}, provided by the \texttt{/getstate\_true} external independent channel described in \cref{subsec:bd_injection}.}
+  \label{fig:obs_real_14d}
+\end{figure}
+
+The image observation follows the dual-camera configuration described in \cref{subsec:obs_image_tcp} (front-view plus wrist, $128 \times 128$, the frozen DINOv3-S shared encoder), and the concrete hardware serial numbers and the image\_crop ROI are obtained via the workspace ROI tool of \cref{subsec:three_tasks} at the end of this section.
+
+\subsection{BC pretrain}\label{subsec:bc_pretrain}
+
+BC pretrain trains the initial policy on demo data through supervised learning, with the loss function being a weighted sum of two terms: the \emph{tanh-Gaussian NLL of the continuous action} and the \emph{cross-entropy of the discrete gripper head}:
+\begin{equation*}
+  L_\text{BC} = \underbrace{-\mathbb{E}_{(s, \vect{a})\sim\mathcal{D}_\text{demo}}\!\left[\log \pi_\phi(\vect{a}^c\mid s)\right]}_{\textstyle L_\text{BC}^\text{cont}}
+  \;+\; \lambda \cdot
+  \underbrace{\mathbb{E}_{(s, a^g)\sim\mathcal{D}_\text{demo}}\!\left[\mathrm{CE}\!\left(Q^g_\psi(s),\, a^g\right)\right]}_{\textstyle L_\text{BC}^\text{disc}},
+\end{equation*}
+where the continuous part adopts a tanh-Gaussian distribution (the base distribution $\mathcal{N}(\vect{\mu}(s), \mathrm{diag}(\vect{\sigma}^2(s)))$ is compressed to $(-1, 1)^6$ through a Tanh, and $\log p$ adds the Tanh Jacobian term $\sum_i \log(1 - a_i^2)$ through a change of variables), and learns both $\vect{\mu}$ and $\vect{\sigma}$ rather than only $\vect{\mu}$---this avoids the std drifting to an arbitrary random-init position at deployment time (too small leaves no exploration room in OOD states, while too large scatters the sampling across the whole domain); the discrete gripper head $Q^g$ outputs a $3$-dimensional logit corresponding to $\{\text{close}, \text{hold}, \text{open}\}$, and the $a^g \in \{-1, 0, +1\}$ in the demos is mapped to the class index through $\mathrm{round}(a^g)+1$; $\lambda = 0.5$ balances the two terms.
+
+$\mathcal{D}_\text{demo}$ is the demo set collected by the operator through SpaceMouse teleoperation (about $50$ episodes per task). $\pi_\phi$ reuses the SAC-style network architecture described in \cref{sec:network}---in which the critic and the temperature parameter do not participate in training during BC, serving only as ckpt-schema placeholders so that a later path switch can directly \texttt{--resume} load them.
+
+Engineering-wise, three key corrections must be noted (these three engineering corrections are concrete supplements of the shared network architecture of \cref{sec:network} on the BC path, and the simulation SAC path does not need them):
+\begin{enumerate}
+  \item \emph{Temporarily disabling encoder detach}. In default SAC training the actor forward goes through \texttt{detach=True} (letting the encoder be updated by the critic loss rather than the actor loss), but BC has no critic loss, so the flag controlling this behavior, \texttt{actor.encoder\_is\_shared=False} (whether the actor forward detaches the encoder output), must be temporarily turned off, so that the BC NLL can backpropagate directly to the encoder---otherwise the encoder stays at random initialization, the actor MLP head can only fit on random features, and the deployment output is near-constant.
+  \item \emph{Clamping $\vect{\sigma}$ directly rather than $\log\vect{\sigma}$}. $\vect{\sigma}(s)$ is clamped directly to $[10^{-5}, 10]$ rather than to the traditional SAC-style $\log\vect{\sigma} \in [-5, 2]$---the latter's lower bound is ineffective because $\exp$ is always positive, the effective range degenerates to $(0, 2]$, and after BC training the std drifts to $10^{-3}$, making the deployment near-deterministic and the entropy bonus ineffective at online resume.
+  \item \emph{DrQ random\_shift data augmentation}. A DrQ-style random\_shift data augmentation is applied to the input image (pad $= 4$ pixel replicate $+$ random crop back to the original size), a key regularization technique for small-data BC to remain robust in states where the block position is slightly off.
+\end{enumerate}
+The concrete hyperparameters (learning rate, batch size, training steps, $\lambda$, etc.) are given in \cref{tab:hyperparams}.
+
+\subsection{HG-DAgger Intervention Iteration}\label{subsec:hg_dagger}
+
+After the BC ckpt is deployed to the real robot, the operator intervenes for correction as needed through the SpaceMouse during the policy execution; the intervention frames (containing the OOD repair actions that BC would not perform) are merged into the next round of BC retraining. This workflow was proposed by Kelly et al.\ in HG-DAgger~\cite{kelly2019hgdagger}, and its key improvement over the original DAgger is that \emph{the intervention is human-initiated rather than queried by the policy}---the operator intervenes only on the failure modes of the policy, avoiding contaminating the dataset with ineffective intervention frames.
+
+\paragraph{Intervention state machine.} The operator intervention is detected by a hysteresis state machine jointly triggered by the SpaceMouse stick displacement and the button state (\cref{fig:dagger_state_machine}):
+\begin{itemize}
+  \item \texttt{IDLE} state: the actions are generated by the BC policy, with the intervention flag \texttt{is\_intervention=False};
+  \item \texttt{IDLE} $\to$ \texttt{ACTIVE} trigger: the stick displacement $\lVert sm[:6]\rVert > 0.05$ or any button is pressed, the actions are then provided by the SpaceMouse and marked as an intervention;
+  \item \texttt{ACTIVE} $\to$ \texttt{IDLE} trigger: the stick displacement $< 0.02$ sustained for \texttt{tail\_k} $= 10$ frames (about $1$\,s @ $10$\,Hz).
+\end{itemize}
+The design intent of \texttt{tail\_k} is to also retain, as intervention data, the recovery-tail frames of the operator's ``release moment''---the operator usually releases the stick at the instant the correction is completed, and the follow-through frames at this point are still a valuable corrective signal.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_6_3_dagger_state_machine.png}
+  \caption{The HG-DAgger intervention state machine. In the \texttt{IDLE} state the actions are generated by the BC policy and not marked as an intervention; when the stick displacement $\lVert sm[:6]\rVert > 0.05$ or any button is pressed, it switches to \texttt{ACTIVE}, the actions are then provided by the SpaceMouse and marked as an intervention; after the stick displacement $< 0.02$ is sustained for \texttt{tail\_k} $= 10$ frames (about $1$\,s @ $10$\,Hz), it switches back to \texttt{IDLE}. \texttt{tail\_k} also retains the follow-through frames of the ``release moment'' as intervention data, capturing the corrective signal of the recovery tail.}
+  \label{fig:dagger_state_machine}
+\end{figure}
+
+\paragraph{Iteration protocol.} Each round of iteration consists of a four-step ``train--deploy--intervene--merge'' loop (\cref{fig:dagger_iteration}):
+\begin{enumerate}
+  \item Load the previous round's BC ckpt and deploy it to the real robot to execute $30$ episodes;
+  \item The operator intervenes as needed, and all transitions are written into a pickle, each frame carrying an \texttt{is\_intervention} label;
+  \item Merge the historical demos with this round's dagger data; call the \texttt{--intervention-only} mode so that the original demos are fully retained and the new dagger keeps only the intervention frames (measured at about $10$--$20\%$);
+  \item Initialize a new policy from scratch and retrain BC for $20{,}000$ steps;
+  \item Repeat until, for $5$ consecutive episodes, the intervention rate $\le 5\%$ and the proportion of zero-intervention episodes $\ge 80\%$.
+\end{enumerate}
+On the real robot, generally $1$--$3$ rounds of iteration are measured to be enough to bring a simple task of the \texttt{pickup} type into a steady state, and the detailed intervention-rate descent curve is given in \cref{subsec:exp_dagger_curve}.
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_6_4_dagger_iteration.png}
+  \caption{The BC $+$ HG-DAgger iteration workflow. Each round of iteration is a four-step ``train--deploy--intervene--merge'' closed loop. (1)~A batch is randomly sampled from the merged dataset (the original demos $+$ the dagger of past rounds, with \texttt{--intervention-only} making the original demos fully retained and the dagger keeping only the intervention frames), and a new policy is initialized from scratch and trained for $20{,}000$ steps of BC pretrain; (2)~the new ckpt is loaded and deployed to the real robot to execute $30$ episodes; (3)~the operator intervenes as needed, and all transitions are written into a pickle with an \texttt{is\_intervention} label; (4)~the intervention frames are merged into the dataset, triggering the next round of retraining. The stopping criterion simultaneously requires the intervention rate and the zero-intervention proportion to satisfy the thresholds; on the real robot, $1$--$3$ rounds are measured to be enough to bring a \texttt{pickup}-type task into a steady state.}
+  \label{fig:dagger_iteration}
+\end{figure}
+
+\subsection{Three-Task Deployment: Shared Pipeline and Task-Level Differences}\label{subsec:three_tasks}
+
+The real-robot deployment of this thesis covers three kitchen-scenario tasks---\texttt{pickup} (grasping an object), \texttt{wipe} (wiping a plate with a sponge), and \texttt{pickandplace} (grasping and placing). The three tasks share the same set of $14$-dimensional observation, the DINOv3-S encoder, and the BC plus HG-DAgger training pipeline, and differ only in three task-level configurations:
+
+\begin{enumerate}
+  \item \emph{Gripper lock mode} (\texttt{gripper\_locked}: a task-level enum, controlling whether the gripper is locked throughout the episode): the \texttt{wipe} task locks the gripper closed throughout (\texttt{gripper\_locked="closed"}), and the other two tasks do not lock it; in the locked mode the SpaceMouse gripper button is masked and \texttt{action[6]} is forced to $-1$, and the corresponding dataset-stats computation adds a const-channel guard to prevent the min-max normalization from producing a NaN;
+  \item \emph{Reset pose and workspace ROI}: each task has an independent reset pose and a front-view-camera workspace crop box, calibrated by mouse-drag box selection and written back to \texttt{calibration\_data/workspace.json}. The reset procedure is performed in the unbiased state---env.reset first calls \texttt{/clear\_encoder\_bias} so that $\vect{q} \equiv \vect{q}_\text{true}$ and then runs the three-segment path of \texttt{\_go\_to\_reset} back to the reset pose, and the bias of the next episode is injected only after the reset is complete. This prevents a bias-induced drift from contaminating the initial position, which would otherwise pollute the initial condition of the ``with bias / no bias'' column comparison of \cref{subsec:exp_4col_matrix};
+  \item \emph{Joint backup deployment}: the deployment script of each task switches to the backup policy through the Hierarchical Supervisor of \cref{sec:backup_real_deploy} when the distance criterion is triggered; combined with the encoder-bias injection switch, this forms a $4$-column experimental configuration (a $2\times2$ ``training bias $\times$ test bias'' factorial), corresponding to the three-task joint success-rate matrix in \cref{subsec:exp_4col_matrix}.
+\end{enumerate}
+
+\subsection{Methodological Post-Mortem of the HIL-SERL Real-Robot Failure}\label{subsec:hilserl_failure}
+
+To let the reader see the methodological evolution completely, this section briefly describes the experience of having attempted the HIL-SERL path in the real-robot stage and failed, with the detailed data and chronological post-mortem given in \cref{subsec:exp_hilserl_failure}.
+
+\paragraph{Phenomenon and repair attempts.} After entering the SAC online stage from the BC pretrain ckpt through \texttt{--resume}, a substantial drift appeared the instant the actor was unfrozen---usually within $1$--$2$ episodes the magnitude and direction of the action output by the policy deviated significantly from the BC behavior (the arm flew toward the workspace edge, the gripper kept opening and closing). Around this problem this thesis implemented multiple rounds of P0 fixes: HTTP retry and timeout tolerance, raising the initial temperature value to prevent $\alpha$ collapse, \texttt{critic\_only\_online\_steps} to let the critic first adapt to the real-robot distribution, NaN-transition skipping protection, aligning \texttt{action\_scale} and \texttt{max\_cart\_speed}, freezing the shared encoder during the critic-only stage, and fixing the resume path---these fixes were fully effective for the simulation HIL-SERL, but the real-robot drift problem was still not fundamentally resolved.
+
+\paragraph{Main root-cause hypothesis and alternative explanations.} The leading hypothesis is: under the real-robot condition of $50$ demos $+$ a sparse reward $+$ short episodes, the Bellman-error surface of the critic is too flat---the $Q$ estimates of different actions in the same state are almost indistinguishable, and the gradient direction is nearly arbitrary after the actor is unfrozen. That HIL-SERL works in the original paper of Luo et al.\ relies on a relatively high real-robot throughput to let the critic calibrate the Q-surface during online interaction; the real-robot throughput of this thesis, $10$\,Hz with a single episode $\le 30$\,s, does not have this condition; HG-DAgger does not depend on a critic, and its monotonic improvement comes directly from the human corrective gradient, and is therefore more stable. This thesis did not make a direct measurement of the Q-surface flatness (such as a $\text{Var}_a Q(s, a)$ statistic), so this hypothesis is still the \emph{leading} rather than the \emph{only} explanation---other candidates include (i)~keyboard reward-label noise contaminating the Q-target, (ii)~a mismatch between the actor/critic distributions of BC (MLE) and SAC (max-Q), (iii)~tens-of-milliseconds-level gRPC jitter amplifying the critic instability. The three alternative hypotheses are left for future empirical exclusion through Q-statistics.
+
+\paragraph{Why it is recorded in the thesis.} Two purposes: first, to warn subsequent researchers considering HIL-SERL under \emph{the throughput measured in this thesis} ($10$\,Hz / $\le 30$\,s episode / $50$-demo scale)---whether HIL-SERL still fails under higher throughput and a larger data scale is not empirically tested in this thesis; second, to reinforce the methodological soundness of the dual-end paradigm---switching to BC and HG-DAgger on the real robot is an avoidance of an analytically intractable problem of critic-based RL under the small-data condition, not an engineering compromise. The reader should position this section as a methodology-level negative observation rather than a closed causal conclusion.
+
+\section{Real-Robot Deployment of the Backup Policy}\label{sec:backup_real_deploy}
+
+The real-robot deployment of the backup policy directly loads the simulation training ckpt of \cref{sec:backup_sim_train} (not retrained), but needs an engineering implementation on three real-robot-related components: hand detection (\cref{sec:hand_detection_evolution}), the three-state FSM of the Hierarchical Supervisor (hereafter the supervisor) (\cref{subsec:supervisor}), and the sim-to-real geometric alignment (\cref{subsec:route_a}).
+
+\subsection{Hand-Detection Selection: the MediaPipe $\to$ WiLoR Design Evolution}\label{sec:hand_detection_evolution}
+
+The 3D position of the palm directly determines the reliability of the collision criterion $\lVert \vect{p}_\text{hand} - \text{TCP}\rVert < D_\text{SAFE}$, and is a key dependency of the real-robot deployment of the backup policy. This thesis went through a design evolution: \textbf{the initial choice of MediaPipe Hands $\to$ switching, at the deployment stage, to WiLoR YOLO $+$ a dual-reference-point geometric filter}.
+
+\paragraph{Initial choice and failure.} \cref{sec:backup_sim_train}, when planning the real-robot deployment at the simulation level, initially chose MediaPipe Hands~\cite{zhang2020mediapipe} (the reasons: only the 3D position of the palm is needed, the $8$\,cm collision threshold leaves a margin relative to the $\sim 2$--$4$\,cm cumulative error, and CPU real-time does not occupy GPU resources). But the first real-robot deployment observed an unexpected failure mode: a deep-learning-based hand detector (including MediaPipe and WiLoR below) recognizes the black \texttt{panda\_hand} end-effector of the Franka as a human hand, and the supervisor therefore keeps triggering BACKUP when there is no human hand---the gripper and the human hand have comparable size, color, and contour in the RGB domain, and a detector relying purely on RGB$+$depth cannot distinguish them.
+
+\paragraph{Switching to WiLoR $+$ a dual-reference-point geometric filter.} This thesis ultimately switched to WiLoR YOLO~\cite{potamias2024wilor} (taking only the detection head, not the MANO reconstruction branch) as the base detector, and superimposes a \textbf{dual-reference-point self-detection filter}: centered on two analytical reference points---the \texttt{panda\_hand} main-body sphere center (offset $0.1034$\,m from the TCP in the reverse $+z$ direction of the gripper) with radius $0.10$\,m, and the TCP pinch site (the geometric center of the two fingers) with radius $0.06$\,m; any detection falling into either sphere is discarded. The advantage of WiLoR over MediaPipe is in two independent dimensions: (i)~higher \emph{baseline detection stability} (a measured miss rate of $\sim 5\%$ vs.\ MediaPipe's $\sim 20\%$); (ii)~\emph{geometric-filter compatibility}---the dual-reference-point filter is independent of the base detector, but MediaPipe, even with the filter added, is still limited by (i) and is inferior to WiLoR. GPU inference of $\sim 10$--$30$\,ms is affordable in the system of this thesis. The distance criterion of the $5$ link spheres to the obstacle is given in \cref{subsec:route_a}. \cref{tab:hand_detectors_real} gives the final selection comparison after the actual deployment.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Final comparison of hand-detection schemes after real-robot deployment (vs.\ the initial comparison during the simulation planning of \cref{sec:backup_sim_train})}
+  \label{tab:hand_detectors_real}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}llllc@{}}
+    \toprule
+    Scheme & Output form & Compute / hardware & Deployment stability & Verdict \\
+    \midrule
+    MediaPipe Hands~\cite{zhang2020mediapipe} & $21$ 2D/3D hand keypoints & $\sim 5$--$10$\,ms, CPU & self-detection; unstable & $\times$ Discarded \\
+    WiLoR~\cite{potamias2024wilor} (detection head + dual-reference filter) & Hand bbox $+$ 3D center & $\sim 10$--$30$\,ms, GPU & Stable (self-det.\ via geometric filter) & \checkmark \textbf{Adopted} \\
+    HaMeR~\cite{pavlakos2024hamer} & Transformer hand mesh & $\sim 30$--$50$\,ms, GPU & Output overly detailed & $\times$ Not needed \\
+    OpenPose (hand)~\cite{simon2017hand} & 2D hand keypoints & $\sim 100$--$200$\,ms, GPU & Insufficient accuracy and latency & $\times$ \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection{The Hierarchical Supervisor and the HomingController}\label{subsec:supervisor}
+
+At real-robot runtime, the Hierarchical Supervisor maintains a \texttt{TASK / BACKUP / HOMING} three-state FSM to coordinate the task policy and the backup policy:
+
+\begin{itemize}
+  \item \texttt{TASK}: the task policy outputs the action; at each step it checks $\lVert \vect{p}_\text{hand} - \text{TCP}\rVert$, and if $< D_\text{SAFE}$ it switches to \texttt{BACKUP}.
+  \item \texttt{BACKUP}: the backup policy outputs the action; at each step it checks the same distance, and if $> D_\text{CLEAR}$ it switches to \texttt{HOMING} (the distance hysteresis $D_\text{CLEAR} > D_\text{SAFE}$ prevents chattering).
+  \item \texttt{HOMING}: the HomingController (a 6D clipped-P controller) pulls the TCP back to the task-relevant pose at the moment \texttt{BACKUP} started, and switches back to \texttt{TASK} once in place.
+\end{itemize}
+
+The HomingController reuses neither the task policy nor the backup policy---it is an \emph{analytical} P controller, avoiding introducing additional uncertainty by using an RL policy. The control law: $\Delta\vect{x}_t = \mathrm{clip}(\mat{K}_p (\vect{x}_\text{task\_resume} - \vect{x}_t), \pm 0.03)$, $\leq 3$\,cm per step, ensuring a smooth return.
+
+\subsection{Sim-to-Real Geometric Alignment: Route A center-dist}\label{subsec:route_a}
+
+The simulation training of the backup policy uses the distance between the \texttt{panda\_hand} sphere center and the geometric center of the obstacle; if the real robot uses the distance between \texttt{tcp\_true} (the pinch site) and the obstacle center, there would be a geometric deviation (the pinch site is about $10$\,cm from the panda\_hand sphere center, a constant offset of the gripper geometry \texttt{TCP\_OFFSET} $= 0.1034$\,m). This thesis weighed three alignment schemes: \textbf{Route A center-dist} (back-computing the panda\_hand sphere center on the real robot as the distance reference), \textbf{Route B retrain-at-TCP} (retraining the backup on the simulation side, changing the sphere center to the pinch site), and \textbf{Route C closest-point} (taking the closest-point distance over the multi-sphere set). The cost of Route B is retraining the entire V3b suite and re-tuning the reward (including the recheck of the V3$\to$V3b geometry upgrade), a large amount of engineering change; Route C needs the real-robot geometry to extract the real-time poses of the multiple spheres, depending on additional libraries such as urdfpy/pinocchio. This work chooses Route A, which has the \emph{minimal engineering change}---only a constant offset back-computation is needed.
+
+\textbf{Concrete implementation of Route A}: on the real robot, the panda\_hand sphere center is back-computed as $\text{TCP}_\text{true} - \text{TCP\_OFFSET} \cdot \vect{n}_\text{hand}$ ($\vect{n}_\text{hand}$ is the unit vector of the hand $+z$ orientation), strictly consistent with the simulation training geometry; the distance references of the $5$ link spheres (link3/link4/link5/link6/hand) of the V3b multi-sphere whole-arm version are all computed by the same TCP\_OFFSET back-computation, each sphere independently, and the $\min$ is finally taken as the distance criterion. The accompanying FSM thresholds are upgraded to the V3b-geometry-matched $D_\text{SAFE} = 0.40$\,m / $D_\text{CLEAR} = 0.45$\,m (the V3 single-sphere version's historical thresholds were $0.30$ / $0.35$\,m; the V3b multi-sphere version needs to be relaxed by $0.10$\,m because the number of check points increases).
+
+\section{Real-Robot Experiments and Analysis}\label{sec:real_experiments}
+
+This section gives the core experimental data of the real-robot deployment. All experiments are completed on the dual-machine architecture described in \cref{sec:real_arch}, and the three tasks (\texttt{pickup} / \texttt{wipe} / \texttt{pickandplace}) use the same BC $+$ HG-DAgger training pipeline (see \cref{sec:real_task_deploy}).
+
+\subsection{The Three-Task Joint Success-Rate Matrix}\label{subsec:exp_4col_matrix}
+
+\textbf{The core data of the thesis.} This section quantifies the robustness gain of the \emph{randomized-bias training paradigm} (\cref{sec:random_bias}) against encoder bias in the real-robot deployment. \cref{tab:real_4col_matrix} gives the three-task $\times$ $4$-column ``training bias $\times$ test bias'' matrix, with each cell taking the mean of $N=10$ episodes (a small-sample exploratory test, for trend reference only; statistical significance is left for future sample-size expansion). The $4$ columns form a $2 \times 2$ full factorial design: (i)~the \textbf{training-data bias-exposure axis}---whether the policy is trained on biased demos and HG-DAgger intervention frames; (ii)~the \textbf{test bias-injection axis}---whether a J1 encoder bias is injected in real time during evaluation. The runtime backup does not contribute to the task success rate because of the HomingController reset mechanism (see \cref{subsec:exp_backup_real}), so it is not used as a column variable of this matrix.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The real-robot three-task $\times$ $4$-column ``training bias $\times$ test bias'' joint success-rate matrix $\star$ the core experimental data of the thesis (each cell $N=10$ episodes, a small-sample exploratory test). \textbf{Training data without bias} $=$ the BC pretrain $50$ demos $+$ the HG-DAgger intervention frames are all collected under the bias-free condition; \textbf{training data with bias} $=$ the same training protocol but all demos and intervention frames are collected under the injection condition of a J1 encoder bias $\vect{b} \sim \mathcal{U}[-0.2, 0.2]$\,rad, corresponding to the randomized-bias training paradigm of \cref{sec:random_bias}; \textbf{test with bias} $=$ the same J1 bias distribution is injected in real time during evaluation. Each column is evaluated with the HG-DAgger iter 2 converged ckpt of the corresponding training setting (\cref{tab:dagger_iter_stats}). The runtime backup does not affect the task success rate because of the HOMING reset, and its separate evaluation is given in \cref{subsec:exp_backup_real}.}
+  \label{tab:real_4col_matrix}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+     & \multicolumn{2}{c}{Training data without bias} & \multicolumn{2}{c}{Training data with bias} \\
+    \cmidrule(lr){2-3} \cmidrule(lr){4-5}
+    Task & Test without bias & Test with bias & Test without bias & Test with bias \\
+    \midrule
+    \texttt{pickup}        & $8/10$ ($80\%$)   & $3/10$ ($30\%$) & $8/10$ ($80\%$)   & $6/10$ ($60\%$) \\
+    \texttt{wipe}          & $10/10$ ($100\%$) & $4/10$ ($40\%$) & $10/10$ ($100\%$) & $8/10$ ($80\%$) \\
+    \texttt{pickandplace}  & $7/10$ ($70\%$)   & $2/10$ ($20\%$) & $7/10$ ($70\%$)   & $5/10$ ($50\%$) \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\textbf{Interpretation dimensions and falsifiable hypotheses (combined with the measured data of the table above).}
+\begin{enumerate}
+  \item \emph{The collapse of bias-free training under a bias fault} (column $2$ vs.\ column $1$, same bias-free training)---pickup $80\%\to 30\%$ (a $62\%$ degradation), wipe $100\%\to 40\%$ (a $60\%$ degradation), pickandplace $70\%\to 20\%$ (a $71\%$ degradation), all three tasks dropping to less than half of the baseline, falsifying the naive hypothesis that ``a policy not exposed to the bias during training can still adapt online to the bias''---this is direct evidence of the necessity of the biased training paradigm.
+  \item \emph{The robustness gain of biased training} (column $4$ vs.\ column $2$, same test with bias)---pickup $30\%\to 60\%$, wipe $40\%\to 80\%$, pickandplace $20\%\to 50\%$, all three tasks recovering by $30$ percentage points. This recovery is precisely the end-to-end empirical evidence of the randomized-bias training paradigm of \cref{sec:random_bias} in the real-robot deployment: the training distribution covering the deployment distribution is the sufficient condition for the policy to achieve implicit-$\vect{b}$ conditional compensation.
+  \item \emph{Biased training has no side effect under a clean test} (column $3$ vs.\ column $1$, same test without bias)---all three tasks are exactly equal ($80/100/70\%$), indicating that injecting a random bias into the demos and the intervention frames does not harm the clean deployment performance. Combining the above three points: randomized-bias training is both \emph{necessary} (the column $1\to 2$ collapse), \emph{sufficient} (the column $2\to 4$ recovery), and \emph{side-effect-free} (column $1=$ column $3$) for real-robot bias robustness.
+  \item \emph{The remaining gap and future work} (column $4$ vs.\ column $1$)---column $4$ is still $20$ percentage points lower than the baseline (per task). The residual gap mainly comes from the implicit-$\vect{b}$ identification mechanism of \cref{prop:identifiable} not being fully activated under the \texttt{tcp\_true} privileged channel; the two-step ablation experiment of the future work of \cref{ch:conclusion} (replacing \texttt{tcp\_true} with \texttt{tcp\_biased} plus the encoder path $\vect{q}+\vect{b}$) aims to close this gap.
+\end{enumerate}
+
+\subsection{The HG-DAgger Intervention-Rate Descent Curve}\label{subsec:exp_dagger_curve}
+
+The iteration protocol described in \cref{subsec:hg_dagger} requires, for $5$ consecutive episodes, the intervention rate $\le 5\%$ and the proportion of zero-intervention episodes $\ge 80\%$ before stopping. This section gives the HG-DAgger iteration statistics of the three tasks (\cref{tab:dagger_iter_stats}): all three tasks converge over three rounds of iteration, iter $0\to 1\to 2$, with the intervention rate monotonically decreasing from $38$--$48\%$ to $\le 5\%$, satisfying the stopping criterion; a single round of $30$ episodes collects $\sim 1{,}800$ frames in total, of which the intervention frames decrease round by round from $\sim 200$--$400$ (iter 0) to $\sim 50$--$80$ (iter 2). The trend of the intervention rate decreasing monotonically with the iteration is consistent with the monotonic convergence curve observed for HG-DAgger on simulation tasks~\cite{kelly2019hgdagger}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{HG-DAgger three-task intervention-rate descent statistics (each iter $30$ episodes). This table corresponds to the convergence process of the ``training data with bias'' policy used in columns $3,4$ of \cref{tab:real_4col_matrix}; the ``training data without bias'' comparison policy goes through the same iteration protocol, with a similar intervention-rate convergence trend, and is not listed repeatedly.}
+  \label{tab:dagger_iter_stats}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}lcccc@{}}
+    \toprule
+    Task & iter 0 intervention rate & iter 1 intervention rate & iter 2 intervention rate & Total iterations \\
+    \midrule
+    \texttt{pickup}        & $42\%$ & $17\%$ & $4\%$  & $3$ \\
+    \texttt{wipe}          & $38\%$ & $12\%$ & $3\%$  & $3$ \\
+    \texttt{pickandplace}  & $48\%$ & $22\%$ & $5\%$  & $3$ \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection{End-to-End Validation of the Encoder-Bias Injection}\label{subsec:exp_bias_injection}
+
+The B$+$D dual injection point described in \cref{subsec:bd_injection} completed the end-to-end validation on $2026$-$04$-$15$: triggered through \texttt{set\_encoder\_bias([0.1, 0, ..., 0])} (J1 $0.1$\,rad), the arm tip physically swept by about $7$\,cm (consistent with the analytical prediction of $\sin(0.1) \cdot \text{arm length}$); the \texttt{/getstate} HTTP route synchronously returned the biased state, and \texttt{/getstate\_true} still returned the true value. This validation proves that the B$+$D dual injection point faithfully reproduces, on the real-robot stack, the two sufficient conditions required by \cref{prop:injection}, (C1) (the control law uses the biased $\vect{q}$) and (C2) (the observation module returns the biased state).
+
+\subsection{Real-Robot Avoidance Evaluation of the Backup Policy}\label{subsec:exp_backup_real}
+
+Loading the V3b ckpt of \cref{sec:backup_sim_train} (\texttt{backup\_policy\_s1\_v3b\_300k}), the backup trigger statistics are recorded in parallel in the three-task real-robot deployment (data being collected): the average number of backup triggers per $30$ episodes, the average number of consecutive backup steps, the average number of HOMING convergence steps, and whether a collision or gripper release occurs during the backup trigger (either is regarded as a backup failure). \textbf{The expected range} (to be filled in with real-robot data): triggering $\sim 5$--$10$ times per $30$ ep (depending on the operator's intervention frequency), $\sim 3$--$8$ consecutive steps, HOMING convergence $\sim 5$--$10$ steps; \textbf{with the sim-side V3b $3\%$ \texttt{hand\_collision} as the expected upper bound}, the real-side sim-to-real gap may amplify this value, and the specifics are to be measured; if the real-robot failure rate significantly exceeds the sim upper bound, it falsifies the working hypothesis that ``the sim-to-real geometric alignment (Route A) has already closed the sim-to-real gap of V3b.''
+
+\paragraph{Why the backup does not enter the main success-rate matrix.} After the backup is triggered, the HomingController resets to a safe position and then immediately hands control back to the task policy to continue executing the same episode (\cref{subsec:supervisor}). The HOMING reset mechanism makes the avoidance action not contaminate the task execution trajectory---for the same episode, with and without backup intervention, the state distribution that the task policy finally takes over is nearly identical, so the contribution of the backup to the task success rate is approximately zero. This decoupled design is precisely the goal of the hierarchical framework that ``the backup serves as a safety layer and does not affect the task performance''---the main matrix of \cref{tab:real_4col_matrix} therefore focuses on the training-bias robustness, and the backup evaluation is quantified separately in this section with \emph{avoidance-event-level} metrics (the number of triggers, the number of consecutive steps, the HOMING convergence, the collision failure rate).
+
+\subsection{Data Post-Mortem of the HIL-SERL Real-Robot Negative Result}\label{subsec:exp_hilserl_failure}
+
+\cref{subsec:hilserl_failure} has already given the phenomenon, the repair attempts, the root-cause hypothesis, and the alternative explanations of the HIL-SERL real-robot failure. This section supplements the corresponding data timeline: after the BC pretrain ckpt (\texttt{pickup\_iter0}) enters the SAC online stage through \texttt{--resume}, during the \texttt{critic\_only\_online\_steps} warmup stage (the actor frozen) the action output is consistent with the BC behavior; the instant the \texttt{critic\_only\_online\_steps} count is cleared and the actor is unfrozen, the action $L_2$ norm jumps from $\sim 0.05$ to $\sim 0.6$ (close to the \texttt{action\_scale} upper limit), and the TCP flies toward the workspace edge $\geq 3$ times per episode. After multiple rounds of P0 fixes (listed in \cref{subsec:hilserl_failure}), this phenomenon did not fundamentally disappear, and the path was finally switched to BC $+$ HG-DAgger.
+
+\section{Operator Safety, Measured Precision, and Multiple Rounds of Fixes}\label{sec:operator_safety}
+
+\paragraph{Operator-safety conventions.} The real-robot deployment involves a human-robot shared workspace, and this thesis adopts three conventions: (i)~\emph{a $10$\,cm sphere around the flange is off-limits}---a side effect of the dual-reference-point filter of \cref{sec:hand_detection_evolution} is that a human hand reaching into this sphere is recognized as a self-detection and discarded, so the operator must keep a safe distance; (ii)~\emph{HOMING anti-jitter}---the impedance controller still has a $\pm 2$--$5$\,mm jitter when at rest, and the \texttt{done\_consecutive\_n=3} streak gate requires $3$ consecutive frames within tolerance before HOMING is judged complete; (iii)~\emph{the real-robot deploy does not do automatic episode termination}---all episodes are manually adjudicated by the operator through the keyboard reward protocol (\cref{sec:task_reward}), and failures such as a collision or gripper release are switched to the backup by the supervisor.
+
+\paragraph{Camera-robot calibration precision.} The cam-to-robot calibration uses SVD solving ($15$--$20$ pairs of ArUco marker poses), with a median calibration residual of $\sim 15$--$20$\,mm. This precision is within the range of the position noise $\sigma = 30$\,mm of the simulation-side DR setting, and the sim-to-real transfer holds at this precision.
+
+\paragraph{Overview of the multiple rounds of P0 fixes in the real-robot deployment.} The real-robot deployment of this thesis went through multiple rounds of P0 fixes before reaching a stable state, summarized as follows:
+\begin{enumerate}
+  \item \emph{HTTP communication}: adding retry and timeout tolerance to requests (the \texttt{/getstate}, \texttt{/pose}, and other routes from the GPU workstation to the RT PC occasionally time out, so $3$ retries and a $0.5$\,s timeout tolerance are added);
+  \item \emph{Aligning action\_scale and max\_cart\_speed}: an inconsistency between action\_scale and max\_cart\_speed causes the single-step action to be clipped, producing transitions that mismatch the training distribution;
+  \item \emph{The encoder-bias path}: the ROS-topic synchronization of the B injection and the D injection must be consistent with the env reset order (first \texttt{clear\_encoder\_bias}, then \texttt{\_go\_to\_reset}, then \texttt{set\_encoder\_bias}), otherwise the reset position drifts;
+  \item \emph{Shared encoder freeze}: the shared encoder must be frozen during the critic-only stage, otherwise the critic gradient contaminates the encoder representation shared with the actor;
+  \item \emph{NaN-transition skipping}: a very small number of transitions (about $0.1\%$) contain a NaN after normalization, and must be explicitly skipped to avoid contaminating the buffer.
+\end{enumerate}
+
+These fixes were fully effective for the simulation HIL-SERL (no drift was seen in the simulation), but still did not fundamentally resolve the real-robot SAC online actor drift problem described in \cref{subsec:hilserl_failure}---this negative conclusion ultimately led the real-robot stage of this thesis to switch to the BC $+$ HG-DAgger path.

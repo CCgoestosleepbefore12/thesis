@@ -1,0 +1,378 @@
+% Chapter 5: Simulation: Policy Training and Observability Validation
+
+\chapter{Simulation: Policy Training and Observability Validation}\label{ch:sim_chapter}
+
+\section{Introduction: The Simulation-Side Paradigm and Chapter Organization}\label{sec:sim_intro}
+
+\cref{ch:task_policy} gave the method design and the shared network architecture of the task policy (25-dimensional observation, randomized-bias training, the DINOv3-S encoder plus three network heads), but left open the execution-level question of ``how exactly to train.'' This chapter follows the method layer of \cref{ch:task_policy} and gives the two main threads of the \textbf{simulation side} of this thesis and their experimental loops:
+
+\begin{itemize}
+  \item \emph{Simulation training of the task policy} (\cref{sec:sim_task_train}): the task policy is trained with HIL-SERL (RLPD $+$ SAC $+$ human-in-the-loop intervention), supported by an Actor-Learner distributed architecture. This training is used to validate the observability propositions raised in \cref{ch:problem_formulation}---forming an end-to-end loop composed of the three groups of experiments H1 (bias degradation baseline), H2/H3 (fixed/random bias comparison), and the observation-dimension ablation in \cref{sec:sim_experiments}. \emph{The ablation experiment is conducted on PickCube 24D} to isolate the encoder-bias factor; the deployment $25$D described in \cref{sec:obs_design} is an equivalent extension of 24D $+$ the hand channel, and the hand channel does not participate in the identifiability argument, serving only the distance-triggered switching between the task policy and the backup policy.
+  \item \emph{Simulation training of the backup policy} (\cref{sec:backup_sim_train}): the backup avoidance policy is trained with purely online SAC $+$ domain randomization, accompanied by the reward and geometry evolution V1$\to$V2$\to$V3$\to$V3b. This thread serves the real-robot deployment of \cref{ch:real_chapter}---the backup is not retrained on the real robot, and the simulation checkpoint is transferred directly.
+\end{itemize}
+
+The two main threads are mutually independent at the simulation level: the task policy is concerned with ``how to complete grasping under encoder bias,'' and the backup policy is concerned with ``how to dodge safely when a hand approaches''; at runtime they are coordinated by a hard switch based on a distance criterion, detailed in the real-robot deployment of \cref{ch:real_chapter}. \cref{sec:sim_experiments} gives all the simulation experimental data corresponding to the two main threads; \cref{sec:sim_to_real_bridge} is a brief bridge at the end of this chapter, transitioning the simulation-validated ``success signal path'' to the real-robot deployment.
+
+\section{Simulation Training of the Task Policy (HIL-SERL)}\label{sec:sim_task_train}
+
+Design choice 3 of \cref{sec:task_method_motivation} and \cref{sec:il_hil} have already argued the basis for adopting HIL-SERL on the simulation side to validate the observability propositions and the randomized-bias robust training (high-throughput Actor-Learner, HIL intervention to compensate for the sparse reward, and an architecture cognate with the real-robot stack). This section gives the implementation framework: with the HIL-SERL proposed by Luo et al.~\cite{luo2025hilserl} as the backbone, with human-in-the-loop intervention as a continuous corrective signal, and with high-throughput asynchronous sampling supported by an Actor-Learner distributed architecture. The framework described in this section \emph{converges stably in the simulation loop}; the accompanying H1--H3 empirical evidence is given in \cref{sec:sim_experiments}, and the methodological post-mortem of the real-robot failure is given in \cref{subsec:hilserl_failure}.
+
+\paragraph{Algorithm stack.} The lowest layer of the framework is Soft Actor-Critic~\cite{haarnoja2018sac} over a continuous action space; on top of it, the RLPD proposed by Ball et al.~\cite{ball2023rlpd} provides demo guidance for sparse-reward tasks through a 50/50 mixed sampling from two replay buffers---the \emph{offline demonstration buffer} is preloaded with 50 successful episodes of human teleoperation, the \emph{online buffer} collects the policy's real-time interaction with the environment, every gradient update samples half from each side, and the SAC loss is not modified; this thesis follows RLPD's high UTD ratio and LayerNorm design to stabilize critic training. HIL-SERL then, on top of RLPD, further makes human-in-the-loop intervention a first-class source of training data throughout the entire online training process (the concrete handling of the intervention data is given in the next paragraph).
+
+\paragraph{Human-in-the-loop intervention.} During online sampling, the trainer can intervene, through a teleoperation device (keyboard, SpaceMouse, etc.), in the episode that the policy is executing and directly give the desired action; this idea of ``supplementing correction by human demonstration in the regions where the policy fails'' can be traced back to the DAgger proposed by Ross et al.~\cite{ross2011dagger}. The transitions produced during an intervention are uniformly appended to the offline demonstration buffer. This thesis initially attempted to retain only the intervention episodes that ``ultimately succeeded,'' but found two problems during implementation and training: (i)~the transitions are written into the buffer in units of steps rather than organized by episode, and tracing back and splitting them by success or failure would require introducing additional boundary-determination logic, and tends to discard a large amount of valid supervision wholesale because of the relatively high failure rate; (ii)~even if an episode ultimately fails to complete the grasp, the action direction given by the human intervention is itself a corrective gradient signal that the policy can learn from. Therefore, all intervention transitions are ultimately retained uniformly, no longer relying on ultimate success or failure for filtering.
+
+\paragraph{Distributed training architecture.} \cref{fig:hilserl_arch} illustrates the two asynchronous processes of the training system. The Actor process holds a copy of the policy weights, and is responsible for interacting with the simulation environment, receiving HIL interventions, and writing transitions into the online buffer; the Learner process holds the two buffers and the optimizer, and is responsible for mixed sampling, computing the SAC loss, updating the actor/critic and the temperature parameter, and periodically synchronizing the latest weights to the Actor. The two sides communicate through gRPC, so that environment sampling and gradient updating are fully decoupled---the Learner executes gradient steps as fast as possible, the Actor only needs to collect transitions stably at a fixed physical control frequency, and the gradient computation does not block the environment step. This architecture also reserves a path for later real-robot training (although the real-robot stage of this thesis ultimately adopts BC and HG-DAgger, detailed in \cref{sec:real_task_deploy}).
+
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_5_1_hilserl_arch.png}
+  \caption{The Actor-Learner distributed architecture of HIL-SERL. The Actor is responsible for interacting with the environment, receiving HIL interventions, and writing into the online buffer; the Learner holds the buffers and the optimizer, and is responsible for mixed sampling, the SAC update, and pushing the weights back. The two sides communicate through gRPC, and environment sampling and gradient updating are fully decoupled.}
+  \label{fig:hilserl_arch}
+\end{figure}
+
+\paragraph{Simulation training procedure.} The complete training consists of two online stages. \emph{Demo warmup stage}: the first 500 gradient updates at the start of training sample only from the offline buffer (the online buffer is still empty at this point), using the 50 demos to establish reasonable initial values for the two critics and the actor, avoiding unstable policy behavior caused by the randomly initialized value function at the start of online interaction. \emph{Online mixed sampling stage}: after the warmup ends, the Actor process begins interacting with the simulation environment and receiving HIL interventions. Among these, the first 100 environment steps after entering the online stage are reserved for \emph{pure data collection} ($\texttt{online\_step\_before\_learning}=100$, writing transitions into the online buffer only without triggering gradient updates), whose role is to let the online buffer first accumulate a small batch of samples matching the current policy distribution, avoiding destroying the initial values obtained during the warmup stage with an extremely biased sampling distribution when the buffer is almost empty. Afterwards it enters the steady-state training loop: each environment step triggers 2 gradient updates ($\text{UTD}=2$), each update samples $|\mathcal{B}|/2$ transitions from each of the offline and online buffers; the transitions produced by interventions are reinjected into the offline buffer as described in the previous paragraph; every 4 gradient steps the Learner synchronously pushes the latest weights of the Actor and the discrete gripper critic to the Actor process through gRPC. All hyperparameters are given in \cref{tab:hyperparams} (the simulation HIL-SERL column).
+
+\section{Simulation Training of the Backup Policy (SAC $+$ DR)}\label{sec:backup_sim_train}
+
+This section gives the full stack of the simulation training of the backup avoidance policy: problem definition, training-paradigm choice, scenario design, reward-function evolution, geometry upgrade, and domain randomization. The biggest difference between the backup policy and the task policy of \cref{sec:sim_task_train} is that it adopts \emph{pure-simulation SAC $+$ DR} rather than HIL-SERL---\cref{sec:backup_paradigm} below gives the detailed argument for the paradigm choice.
+
+\subsection{Problem Definition and Safety Requirements}\label{sec:backup_problem}
+
+\textbf{Applicable situation of the backup avoidance policy}: during the process in which the arm executes a grasping/placing task, a human hand may intermittently enter the workspace---for example, an operator adjusting the material position, replenishing consumables, or manually intervening during HIL training. In such intermittent human-robot shared situations, the backup policy \emph{takes over when a hand approaches the TCP, actively dodges, and hands control back to the task policy afterwards}. This policy covers two situations: (i)~human-robot collaborative safety during production deployment (the main application); (ii)~the safety guarantee when the operator intervenes during the HIL training of \cref{ch:task_policy} (the derived application).
+
+\paragraph{Safety requirements.} The backup policy must simultaneously satisfy four requirements: (1)~\textbf{collision avoidance}---the TCP-to-hand distance $> 8\,\text{cm}$; (2)~\textbf{maintaining the grasp}---never releasing an already-grasped block during avoidance; (3)~\textbf{a hard workspace boundary}---the TCP does not exceed the preset Cartesian workspace (jointly defined by the simulation spawn box and the real-robot \texttt{abs\_pose\_limit}); (4)~\textbf{dodging in place}---the cumulative TCP displacement during avoidance $\leq 15\,\text{cm}$, so as to guarantee that the task policy can resume execution near the original position. Violating any one of these terminates the episode with $-10$, and the concrete reward form is given in \cref{sec:backup_reward}.
+
+\paragraph{Runtime policy-switching mechanism.} The Actor side simultaneously holds the two sets of parameters of the task policy and the backup policy, and the hand--TCP Euclidean distance determines which set produces the action at the current step: when the distance $\geq 8\,\text{cm}$ the task policy action takes effect, and when the distance $< 8\,\text{cm}$ it immediately switches to the backup policy; the backup policy executes for at most 10 consecutive steps, during which, if the hand leaves the workspace or the step count is used up, it switches back to the task policy. This ``distance-triggered $+$ time-bounded'' hard switch simplifies the training objective of the backup policy to ``dodge and stabilize within 10 steps,'' fully decoupled from the task-level semantics. The concrete thresholds and geometric alignment of the real-robot deployment (Route A center-dist) are given in \cref{sec:backup_real_deploy}.
+
+\subsection{Choice of the Training Paradigm}\label{sec:backup_paradigm}
+
+\paragraph{Design evolution: from hard-coded freezing to separated learning.} The current separated dual-policy design went through two failed iterations; the environment was always unified (the task policy and the backup policy share \texttt{PandaPickPlaceSafeEnv}), and what changed was how to ``learn avoidance.'' \emph{Scheme one} is \textbf{hard-coded freezing}---when a hand approaches, the task policy stops outputting and the arm keeps its configuration. This scheme is statically safe but is not learning-based and is inefficient because it is purely passive (it cannot respond differentially to differences in motion patterns; when the hand approaches along the original direction, a still end-effector may still make contact). \emph{Scheme two} is a \textbf{unified learning policy}---using the same policy to optimize the task and the avoidance simultaneously, with the reward following the sparse binary form (success $= 1$, any failure $= 0$). Typical reward hacking occurred during training: the policy learned to \emph{accelerate toward the target plate} when the hand appeared, completing the placement before the collision; the reason is that this reward does not distinguish collision from timeout (the penalty is 0 for both), and ``sprinting to completion'' is superior in expected return to ``completing after avoidance.''
+
+The two failures together led to the final architecture of this section: \textbf{the environment is unchanged (still sharing the 25-dimensional unified observation), and the learning objective is split into two specialized policies}---the task policy retains the original sparse $0/1$ reward (\cref{sec:task_reward}), optimizes only ``grasping the block and placing it on the target plate,'' and produces no avoidance response to $h_\text{active}$ or $\vect{p}_\text{hand}$; avoidance is handled by a separate backup policy, which adopts a non-negative immediate $+$ large termination penalty reward (\cref{sec:backup_reward}). The two are hard-switched by a runtime distance criterion---this both retains the safety lower bound of hard-coded freezing, and, through learning-based active avoidance, circumvents the two inefficient situations of ``interrupting the task'' and ``passive contact.''
+
+\paragraph{Architectural inspiration: Kiemel et al.\ 2024.} The overall architecture of this section is inspired by Kiemel et al.~\cite{kiemel2024safe}: they first train a backup policy with model-free RL to produce avoidance actions, and then use it as a safety layer when learning other tasks---before each decision the collision risk is estimated, and if the risk is too high the backup's action replaces it. This thesis follows the idea of ``pre-training the backup, switching at runtime,'' and makes two adjustments: (i)~the use case is changed from \emph{a safety layer for general task learning} to collaborative safety under HIL training and a human-robot shared workspace; (ii)~the online risk estimation is simplified to a hard switch based on the hand--TCP distance, reducing the computational and engineering complexity of the real-robot deployment. At the level of reward design, this thesis retains its core principle---\emph{non-negative immediate rewards $+$ a large termination penalty}.
+
+\paragraph{Why pure simulation $+$ domain randomization is adopted.} In contrast to the HIL-SERL of the task policy in \cref{sec:sim_task_train}, the backup policy adopts \emph{pure-simulation SAC $+$ domain randomization} rather than HIL training. Four reasons: \emph{(i)~Observation modality}---the input is a low-dimensional state, with no RGB image, and there is no visual sim-to-real gap; the gap of the low-dimensional observation (position noise, velocity jitter, detection delay) is precisely covered by DR (\cref{sec:backup_training}). \emph{(ii)~Recursive safety}---if the backup itself also needed HIL training, then training it would in turn need a more low-level ``backup of the backup'' to guarantee the operator's safety, an infinite regress; pure simulation fundamentally bypasses this problem. \emph{(iii)~Evaluability}---the simulation can construct obstacle-motion scenarios with complete coverage, and can directly evaluate the policy's safety with collision ground truth. \emph{(iv)~Bias robustness}---the avoidance behavior mainly depends on the \emph{relative geometry} of the obstacle and the TCP rather than the absolute position, and the DR observation noise makes the policy react to the approximate direction rather than the precise position, so the backup is naturally robust to encoder bias and needs no bias-aware training; empirically, running the backup checkpoint trained in a bias-free environment directly in an evaluation environment with a random joint-1 bias yields a survival rate basically consistent with that in the bias-free environment (detailed in \cref{sec:sim_experiments}).
+
+\subsection{Scenarios, Observation, and Motion Modes}\label{sec:scenarios}
+
+This section gives the simulation environment design of the backup policy---two training scenarios, the composition of the single-frame observation vector, the frame-stacking strategy, and four obstacle motion modes.
+
+\paragraph{Scenarios S1 / S2 and the observation vector.} This section trains the backup policy on two progressive simulation scenarios: \emph{S1} contains an intermittently appearing moving obstacle (simulating a single human hand); \emph{S2} additionally places, on top of S1, a static obstacle at a random but fixed position (simulating a fixed object on the workbench). The two scenarios share the same single-frame observation structure---an $18$-dimensional robot state ($7$ joint angles $+$ $7$ joint velocities $+$ $1$ gripper opening $+$ $3$ TCP positions) plus a $10$-dimensional observation per obstacle ($1$-dimensional activation flag $+$ $3$-dimensional absolute position $+$ $3$-dimensional differential velocity $+$ $3$-dimensional position relative to the TCP). S1 has $28$ dimensions per frame, and S2 has $38$ dimensions per frame. The activation flag characterizes the intermittent appearance of an obstacle: the obstacle is $1$ when within the workspace and becomes $0$ after leaving, so that the policy can return to a normal state when the obstacle disappears and re-enter avoidance when it next appears.
+
+\paragraph{Frame stacking.} The single-frame observation already contains the differential velocity of the obstacle, but different motion modes exhibit significantly different features in the time dimension---the periodic pauses of STOP\_GO mean that ``the current velocity $\approx 0$'' may be a true stop or a brief pause; the accelerated crossing of PASSING and the constant-velocity straight line of LINEAR can be reliably distinguished only after observing several consecutive steps. To let the policy judge based on a short history rather than a single instantaneous observation, this section performs $3$-frame stacking of the single-frame observation:
+\begin{equation*}
+  \vect{o}_t^{\text{stack}} = [\vect{o}_{t-2}^{\text{single}};\; \vect{o}_{t-1}^{\text{single}};\; \vect{o}_t^{\text{single}}],
+\end{equation*}
+so that the complete observation of S1 is $28 \times 3 = 84$ dimensions and that of S2 is $38 \times 3 = 114$ dimensions. This is equivalent to implicitly providing second-order motion information (acceleration and mode features) at the observation level, enabling the policy to recognize the motion mode and predict the short-term future motion.
+
+\paragraph{Obstacle motion modes and episode setting.} At the beginning of each episode, one of four motion modes is selected uniformly at random and kept unchanged within the episode (\cref{tab:motion_modes}), so as to cover the typical modes of hand approach; the policy must remain robust to all four modes. The training episode length is fixed at $10$ steps (@ $10$\,Hz, i.e., $1$\,s), and an \emph{undiscounted} setting $\gamma = 1.0$ is adopted---under such a short episode the safety of every step is equally important, and any discount would artificially distort the weight of the avoidance behavior in the time dimension.
+
+\begin{table}[htbp]
+  \centering
+  \caption{The four obstacle motion modes in backup-policy training}
+  \label{tab:motion_modes}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Mode & Trajectory & Key parameter & Simulated scenario \\
+    \midrule
+    LINEAR   & Constant-velocity straight line toward the TCP & --- & A person reaching directly for an object \\
+    ARC      & Arc curving toward the TCP & Direction vector rotates $\omega \sim \mathcal{U}(-0.1, 0.1)$\,rad per step & A person reaching around from the side \\
+    STOP\_GO & Toward the TCP with random pauses & $30\%$ pause probability per step & A person hesitating before reaching \\
+    PASSING  & Crossing perpendicular to the TCP direction & Speed $\times\, 1.3$ & A hand passing by rather than targeting the robot \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection{Evolution of the Reward Function Design}\label{sec:backup_reward}
+
+The reward function of the backup policy went through three iterations---V1 / V2 / V3, each failure exposing a typical reward-hacking mode, together leading to the final form of V3; V3 further evolves into the V3b geometry during the real-robot deployment stage (detailed in \cref{sec:v3b_geometry}). This subsection states the three versions in chronological order and summarizes the design principles; the concrete training curves and quantitative comparison belong to the experimental part and are left to \cref{sec:sim_experiments}.
+
+\paragraph{V1: the proximity reward and its failure.} V1 adopts a ``move away from the obstacle'' immediate reward---driven by the distance between the TCP and the nearest obstacle:
+\begin{equation*}
+  r_t^{\text{V1}} = r_{\text{prox}}(d_t^{\text{obs}}) - 0.01 \lVert \vect{a}_t \rVert,\quad
+  r_{\text{prox}}(d) = \min\!\left(1, \, (d / d_{\text{danger}})^2\right),
+\end{equation*}
+where $d_t^{\text{obs}}$ is the Euclidean distance between the TCP and the nearest obstacle; on collision $r_{\text{term}} = -1.0$. The problem is that $r_{\text{prox}}$ \emph{directly rewards moving away}---the optimal behavior the policy learns is to run as far away as possible, rather than staying in place and dodging slightly. This directly conflicts with the deployment requirement of this section (safety requirement (4) ``dodging in place'' of \cref{sec:backup_problem}): the policy ``avoided the hand'' but ``lost the task position.'' \emph{Lesson}: the reward must align with the deployment objective---the goal of avoidance is not ``the farther from the obstacle the better,'' but ``neither colliding nor moving away.''
+
+\paragraph{V2: the all-negative reward and its failure.} V2 changes to an \emph{all-negative} soft-constraint form, dissuading the policy from running far away with three penalties on displacement $+$ action magnitude $+$ action smoothness. For compactness of writing, two abbreviations are introduced: $\Delta\vect{p}_t := \vect{p}_t^{\text{TCP}} - \vect{p}_0^{\text{TCP}}$ (the cumulative displacement relative to the episode start), and $\Delta\vect{a}_t := \vect{a}_t - \vect{a}_{t-1}$ (the action increment); then the per-step reward is
+\begin{equation*}
+  r_t^{\text{V2}} = -\, 0.5 \lVert\Delta\vect{p}_t\rVert - 0.01 \lVert\vect{a}_t\rVert - 0.01 \lVert\Delta\vect{a}_t\rVert,
+\end{equation*}
+collision termination $r_{\text{term}} = -1.0$, $\gamma = 0.99$. The problem is that \textbf{every surviving step brings a negative reward}---the total return of fully surviving 10 steps is roughly between $-0.5$ and $-0.8$, and once a collision occurs at step 1 it is $-1.0$, so the gap between the two is only $\sim 0.2$; when the displacement accumulation is slightly larger, the total return of surviving is even worse than colliding immediately. The optimal behavior the policy learned became to \emph{terminate as fast as possible} (``dying fast is better than dying slow''): in the training log the average reward continuously deteriorated from $-0.88$ to $-1.00$, and the episode length gradually shortened until the collision occurred on almost the first step of every episode (the complete curve is given in \cref{sec:sim_experiments}). \emph{Lesson}: survival must be strictly superior to any termination---the immediate reward cannot be negative, and the termination penalty must be far larger than the cumulative return of any possible surviving trajectory.
+
+\paragraph{V3: non-negative immediate reward $+$ large termination penalty.} V3 strictly follows the principle of ``a non-negative per-step immediate reward, a large penalty on termination'' of Kiemel et al.~\cite{kiemel2024safe}, and retains the displacement term in the soft reward to achieve the ``dodging in place'' goal. The immediate reward for every surviving step is
+\begin{equation*}
+  r_t^{\text{V3}} = 0.5 - 0.5 \lVert\Delta\vect{p}_t\rVert - 0.01 \lVert\vect{a}_t\rVert - 0.01 \lVert\Delta\vect{a}_t\rVert \;\geq\; 0,
+\end{equation*}
+the episode ends with a large termination penalty $r_{\text{term}} = -10.0$ when any of collision, block drop, the TCP exceeding the hard workspace boundary, or the cumulative displacement $\lVert\Delta\vect{p}_t\rVert > 15$\,cm is triggered; if the episode safely survives the full $10$ steps, an additional $+5.0$ completion reward is given; the discount is $\gamma = 1.0$. \cref{tab:v3_returns} lists the total return of several typical scenarios: staying still $+10.0$ $>$ a small dodge $\approx +9.7$ $>$ a large dodge $\approx +8.5$ $\gg$ collision or over-reaction $-10.0$. This ordering has three key properties: (i)~\emph{the per-step immediate reward is non-negative}, surviving is always superior to early termination, eliminating the ``dying fast'' loophole of V2; (ii)~\emph{the termination penalty is far larger than the cumulative upper bound of any surviving trajectory} ($|{-10.0}| \gg +10.0$), so actively terminating is not the optimal solution in expected return; (iii)~the soft ordering of staying still $>$ a small dodge $>$ a large dodge makes the policy tend to stay still when it can (aligning with the ``dodging in place'' goal, eliminating the ``run far away'' loophole of V1), and tend toward a small-magnitude action when it has to move.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Total expected return of typical scenarios under the V3 reward ($\gamma = 1.0$, 10-step episode)}
+  \label{tab:v3_returns}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}llc@{}}
+    \toprule
+    Scenario & Behavior description & Total return \\
+    \midrule
+    Perfect stillness & Staying in place; the hand passes by without contact & $+10.0$ \\
+    Small dodge & Surviving after a cumulative displacement of $\approx 5$\,cm & $\approx +9.7$ \\
+    Large dodge & Surviving after a cumulative displacement of $\approx 12$\,cm & $\approx +8.5$ \\
+    Over-reaction & Cumulative displacement $> 15$\,cm triggers the hard constraint & $-10.0$ \\
+    Collision failure & Failing to dodge on the first step and colliding with the hand & $-10.0$ \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\paragraph{Summary of the design principles.} The three iterations V1 $\to$ V2 $\to$ V3 yield four reward-design principles generally applicable to short-episode avoidance tasks: \textbf{(1)}~the immediate reward must be \emph{non-negative}, guaranteeing that survival is strictly superior to any termination; \textbf{(2)}~the termination penalty must be \emph{far larger than} the cumulative upper bound of any surviving trajectory, preventing ``active termination'' from becoming the optimal solution; \textbf{(3)}~a cross-episode hard constraint such as displacement must be expressed by a \emph{termination penalty} rather than a soft penalty, avoiding circumventing termination through cumulative soft penalties; \textbf{(4)}~a short-episode task should use an \emph{undiscounted} setting $\gamma = 1.0$, avoiding an unnecessary trade-off of the safety weight in the time dimension.
+
+\subsection{V3$\to$V3b Geometry Upgrade: from a Single Sphere to a 5-Sphere Whole Arm}\label{sec:v3b_geometry}
+
+The geometric model of the V3 reward only detects the distance between the single sphere of \texttt{panda\_hand} and the obstacle. During the real-robot deployment stage (\cref{sec:backup_real_deploy}), it was found that this model has a failure mode: the policy learns to make \texttt{panda\_hand} avoid the obstacle, but \textbf{the elbow and forearm may still collide with the obstacle}---single-sphere detection cannot capture the collision risk of mid-segment links such as link3/link4. Accordingly, this thesis upgrades V3 to the V3b geometry, comprising three changes:
+
+\begin{enumerate}
+  \item \emph{Multi-sphere whole-arm detection}: the single sphere (only \texttt{panda\_hand}, radius $0.10$\,m) is extended to $5$ spheres (\texttt{link3, link4, link5, link6, hand}, with radii $0.07, 0.07, 0.065, 0.065, 0.10$\,m respectively). The collision criterion takes the minimum distance over all spheres, so that the training reward directly covers the elbow/forearm collision risk.
+  \item \emph{Adjustment of the obstacle radius and the TCP-obstacle distance}: the obstacle radius is increased from $0.035$\,m to $0.10$\,m (aligned with the equivalent radius of the real-robot hand bbox); the obstacle spawn distance is increased from $\mathcal{U}(0.21, 0.30)$\,m to $\mathcal{U}(0.30, 0.40)$\,m; the hand speed is increased from $\mathcal{U}(0.005, 0.015)$\,m/step to $\mathcal{U}(0.015, 0.030)$\,m/step; the maximum allowed displacement is increased from $0.30$\,m to $0.50$\,m.
+  \item \emph{Saturating proximity bonus}: a saturating proximity bonus is added to the V3 reward (saturation value $0.20$ @ clearance $0.10$\,m), giving the policy a positive gradient signal for the critical distance (close but not colliding), avoiding the situation in which V3, under multi-sphere detection, fails to train a fine avoidance because ``moving away is enough.''
+\end{enumerate}
+
+The FSM threshold upgrade accompanying V3b is given in \cref{sec:backup_real_deploy} (Route A center-dist: $D_\text{SAFE}$ 0.30 $\to$ 0.40\,m, $D_\text{CLEAR}$ 0.35 $\to$ 0.45\,m). The trained V3b version (\texttt{backup\_policy\_s1\_v3b\_300k}) has a survival rate of 95.0\% in the preferred real-robot ckpt, a significant improvement over the 71.5\% of the V3 single-sphere version; the \texttt{hand\_collision} rate drops from 17.5\% to 3.0\% (detailed in \cref{sec:sim_experiments}).
+
+\subsection{Training Protocol and Domain Randomization}\label{sec:backup_training}
+
+\paragraph{Network architecture (the simplification relative to \cref{sec:network}).} The network main body of the backup policy is fully isomorphic to \cref{sec:network}---the continuous Actor and the Twin Critic of SAC both use an MLP with hidden layers $[256, 256]$ and ReLU activation as their main body, and the basic hyperparameters such as the learning rate, gradient clipping, and target-network soft update all reuse the settings of the task policy. The action space is a $6$-dimensional continuous end-effector increment $(\Delta x, \Delta y, \Delta z, \Delta r_x, \Delta r_y, \Delta r_z)$ with a single-step scaling of $0.03$\,m, and the gripper is always locked during the activation of the backup policy and does not participate in the action. There are two simplifications: (i)~the input is a low-dimensional state, with \emph{no visual encoder}; (ii)~\emph{pure online SAC} is adopted, with no offline demo buffer and no RLPD-style demo bootstrap. The remaining nonzero differences are listed in \cref{tab:backup_hparams}. Among them, the UTD ratio is taken as $8$ (significantly higher than the $2$ of the task policy), as a compensation for ``short episodes and scarce online data''; settings such as UTD $\in \{2, 4\}$ were also tried during training, and they have basically no influence on the final survival rate, affecting only the wall-clock speed of training convergence.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Key hyperparameter differences of the backup policy relative to the task policy}
+  \label{tab:backup_hparams}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Hyperparameter & Task policy (\cref{ch:task_policy}) & Backup policy (this section) \\
+    \midrule
+    Offline demo buffer & $50$ episodes & None \\
+    Total online training steps & $10^5$ & $2 \times 10^5$ (V3b trains $3 \times 10^5$) \\
+    UTD ratio & $2$ & $8$ (V3b reverts to $4$ to prevent overfitting) \\
+    SAC initial temperature $\alpha_0$ & $0.01$ & $0.1$ \\
+    Online buffer capacity & $10^5$ & $2 \times 10^5$ \\
+    Episode length & $200$ steps & $10$ steps (V3b $20$ steps) \\
+    Discount factor $\gamma$ & $0.97$ & $1.0$ \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\paragraph{Domain-randomization parameters.} Domain randomization \emph{acts only on the observation layer}, and collision detection always uses the true positions---this is the bottom line of the safety boundary: DR makes the policy robust to perception noise, but it should not let the policy practice avoidance on ``false collisions.'' The concrete parameters are given in \cref{tab:backup_dr}, and the real-robot source of each item is matched one to one in the sim-to-real alignment analysis of the next paragraph.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Domain-randomization parameters in backup-policy training}
+  \label{tab:backup_dr}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Parameter & Distribution & Modeled content \\
+    \midrule
+    Obstacle position noise & $\mathcal{N}(\vect{0},\,0.03^2 \mathbf{I}_3)$\,m & Cumulative localization error of vision $+$ depth \\
+    Obstacle velocity noise & $\mathcal{N}(\vect{0},\,0.01^2 \mathbf{I}_3)$\,m/step & Frame-to-frame differencing jitter \\
+    Observation delay & $\mathcal{U}\{0, 1, 2\}$ steps & Visual detection $+$ inference delay \\
+    Obstacle spawn distance & $\mathcal{U}(0.30,\, 0.40)$\,m (V3b) & Different entry distances \\
+    Obstacle movement speed & $\mathcal{U}(0.015,\, 0.030)$\,m/step (V3b) & Different hand speeds \\
+    TCP position noise & $\mathcal{N}(\vect{0},\,0.005^2 \mathbf{I}_3)$\,m & Single-frame error of external TCP localization \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\paragraph{Sim-to-real alignment analysis.} \cref{tab:backup_sim2real} compares the gap between simulation and the real robot for every stage on the observation and control chain. The core observation is: \textbf{the robot's own state} $(\vect{q}, \dot{\vect{q}}, \text{TCP})$ is read directly from the encoders, with no gap between sim and real (this is precisely the main motivation for this section choosing a pure-state observation); whereas all the dimensions related to \textbf{obstacle perception} (position, velocity, delay) depend on the external vision system and must be covered by DR. There is a structural difference between the controller---from the OSC of the simulation to the Cartesian impedance control of the real robot---but they are approximately equivalent in the small-step TCP-increment action space, with the rigorous argument given in \cref{ch:real_chapter}.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Sim-to-real gap analysis of the backup policy}
+  \label{tab:backup_sim2real}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Stage & Simulation source & Real-robot source & Gap-bridging method \\
+    \midrule
+    Robot state $\vect{q}, \dot{\vect{q}}, \text{TCP}$ & MuJoCo ground truth & Joint encoders & No gap \\
+    Hand position & MuJoCo ground truth & Visual detection $+$ D455 depth & DR position noise (see \cref{sec:hand_detection_evolution}) \\
+    Hand velocity & Ground-truth differencing & Frame differencing of visual results & DR velocity noise \\
+    Observation delay & $0$ & $\sim 10$\,ms detection delay & DR delay $\mathcal{U}\{0,1,2\}$ steps \\
+    Coordinate transform & None & $T_\text{cam}\!\to\!\text{robot}$ calibration & Included in the position-noise term \\
+    Controller & OSC & Cartesian impedance control & Approximately equivalent under small increments (\cref{ch:real_chapter}) \\
+    Obstacle motion mode & Random over 4 preset modes & Real human-hand motion & 4 modes cover typical motions \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+The concrete selection of the hand detector (the evolution from the initial choice of MediaPipe to the deployment of WiLoR) is a real-robot deployment decision, and is moved to \cref{sec:hand_detection_evolution} for a detailed account.
+
+\section{Simulation Experiments and Analysis}\label{sec:sim_experiments}
+
+This section gives all the simulation experimental data corresponding to the two main threads of this chapter (the task policy HIL-SERL $+$ the backup policy SAC $+$ DR). All experiments are completed in the PandaPickCube / PandaPickPlaceSafe / PandaBackupPolicy series of MuJoCo environments, with $50$ episodes evaluated per bias value, and $3$ seeds trained per hyperparameter group.
+
+\subsection{Experimental Setup}\label{sec:sim_exp_setup}
+
+\paragraph{Environment.} A 7-DoF Franka Panda simulation based on MuJoCo 3.0, with OSC control at $10$\,Hz and physics simulation at $500$\,Hz. The task-policy evaluation is completed on PandaPickCube: grasping a tabletop block and lifting it by $20$\,cm is regarded as a success. The backup-policy evaluation is completed on PandaBackupPolicyS1 / S2: per episode, one obstacle motion is selected at random with equal probability from the four modes of \cref{tab:motion_modes}, and surviving the full $10$ steps without triggering any termination condition is regarded as a success.
+
+\paragraph{Statistical protocol.} Each group of experiments uses $3$ seeds, each seed evaluates $50$ episodes, and the mean $\pm$ std is reported; in a bias sweep, each bias value is evaluated independently with $50$ episodes. Unless otherwise specified, the training hyperparameters follow the default settings of \cref{tab:hyperparams} and \cref{tab:backup_hparams}.
+
+\subsection{H1: The Encoder-Bias Degradation Baseline}\label{sec:exp_h1}
+
+\textbf{Hypothesis.} A policy obtained by bias-free training degrades in performance under encoder bias.
+
+\textbf{Experiment.} A bias-free policy is trained (PickCube 18D observation, without \texttt{real\_tcp}), and evaluated respectively under $b \in \{0.0, 0.05, \ldots, 0.30\}$\,rad. The evaluation environment uses the dual-injection simulation step of \cref{alg:sim_step} that simultaneously satisfies condition (C1) of \cref{prop:injection} (the control law uses $\vect{q}_\text{true}+\vect{b}$) and (C2) (the observation returns the biased state), ensuring that the bias injection faithfully reproduces the causal chain of \cref{sec:causal_chain}.
+
+\textbf{Results} (\cref{tab:h1_degradation}): the success rate drops significantly once the bias exceeds $0.10$\,rad, and approaches complete failure at $\geq 0.25$\,rad; the end-effector position shifts linearly with the bias (about $3$\,cm per $0.05$\,rad). This degradation curve directly corresponds to \cref{prop:non_identifiable}: under the basic observation the bias is non-identifiable, and the policy cannot make a differentiated compensation for different $\vect{b}$.
+
+\begin{table}[htbp]
+  \centering
+  \caption{H1: degradation of the bias-free policy under different J1 biases}
+  \label{tab:h1_degradation}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}cccc@{}}
+    \toprule
+    Bias (rad) & Success rate & Average steps & TCP offset \\
+    \midrule
+    0.00 & 100\% & 13.5 & 0\,cm \\
+    0.05 & 100\% & 13.5 & $\sim 3$\,cm \\
+    0.10 & 80\%  & 55.9 & $\sim 6.5$\,cm \\
+    0.15 & 62\%  & 62.5 & $\sim 10$\,cm \\
+    0.20 & 51\%  & 99.8 & $\sim 13$\,cm \\
+    0.25 & 5\%   & 184.5 & $\sim 16$\,cm \\
+    0.30 & 0\%   & 191.1 & $\sim 19$\,cm \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection{H2 $+$ H3: Fixed vs.\ Random Bias Training}\label{sec:exp_h2}
+
+\textbf{Hypothesis.} Fixed-bias training leads to single-point conditioning and zero-bias over-compensation; random-bias training achieves full-range robustness.
+
+\textbf{Experiment.} Three groups of controlled training (PickCube 24D observation, with \texttt{real\_tcp}): (a) no bias; (b) fixed $b = 0.2$\,rad; (c) random $b \sim \mathcal{U}[0, 0.25]$\,rad. After each is trained, it is evaluated on a full bias sweep.
+
+\textbf{Results} (\cref{tab:h2h3_three_strategies}):
+\begin{itemize}
+  \item \emph{Bias-free policy}: perfect at $b = 0$ but degrading from $b > 0.10$ on (same as H1).
+  \item \emph{Fixed-bias policy}: $99\%$+ near the training point $b = 0.2$, but dropping to $83\%$ at $b = 0$---direct empirical evidence of \textbf{zero-bias over-compensation}, corresponding to the ``single-point conditioning $\to$ over-compensation'' assertion of \cref{subsec:identifiability_vs_solvability}.
+  \item \emph{Random-bias policy}: robust at $92$--$100\%$ over the full range, and \textbf{generalizing beyond the training range} ($99\%$ still at $b = 0.30$\,rad, with a training upper limit of $0.25$).
+\end{itemize}
+
+\begin{table}[htbp]
+  \centering
+  \caption{H2 $+$ H3: success-rate comparison of the three policies under a bias sweep (PickCube 24D environment; the same bias grid as the H1 degradation curve of \cref{tab:h1_degradation})}
+  \label{tab:h2h3_three_strategies}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}cccc@{}}
+    \toprule
+    Bias (rad) & Bias-free policy & Fixed $b=0.2$ policy & Random $b\in[0,0.25]$ policy \\
+    \midrule
+    0.00 & 100\% & 83\%   & 92\% \\
+    0.05 & 100\% & 87\%   & 100\% \\
+    0.10 & 80\%  & 99\%   & 99\% \\
+    0.15 & 62\%  & 100\%  & 96\% \\
+    0.20 & 51\%  & 100\%  & 97\% \\
+    0.25 & 5\%   & 100\%  & 96\% \\
+    0.30 & 0\%   & 99\%   & 99\% \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection{Observation-Space Ablation: from 18D to 24D}\label{sec:exp_ablation}
+
+\textbf{Hypothesis.} The identifiability conclusion regarding the observation dimension can be directly validated by the ablation experiment---after removing the independent external TCP $\vect{o}_\text{real}$, the bias is non-identifiable and the training fails.
+
+\textbf{Experiment.} A three-level observation-space comparison (PickCube, random-bias training): 18D (without \texttt{real\_tcp} and \texttt{block\_pos}) / 21D (adding only \texttt{block\_pos}) / 24D (adding \texttt{real\_tcp} as well).
+
+\textbf{Results} (\cref{tab:ablation_obs}):
+\begin{itemize}
+  \item \emph{18D}: robot proprioception only, an average of $42\%$ over the full bias sweep---under the basic observation the bias is non-identifiable, corresponding to \cref{prop:non_identifiable}.
+  \item \emph{21D}: adding the target position but still without an independent TCP, the training does not converge---``knowing the goal but not itself,'' unable to compensate for the encoder bias.
+  \item \emph{24D}: after adding \texttt{real\_tcp} as well, reaching $92$--$100\%$---the identifiability condition of \cref{prop:identifiable} is satisfied, and the policy implicitly recovers $\vect{b}$ and compensates conditionally.
+\end{itemize}
+
+\begin{table}[htbp]
+  \centering
+  \caption{Observation-space ablation: a one-to-one correspondence between theoretical prediction and measurement}
+  \label{tab:ablation_obs}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{@{}lllll@{}}
+    \toprule
+    Observation & Dim & Missing key signal & Result & Theoretical prediction \\
+    \midrule
+    18D & 18 & \texttt{real\_tcp} $+$ \texttt{block\_pos} & $42\%$ avg & Non-identifiable (\cref{prop:non_identifiable}) \\
+    21D & 21 & \texttt{real\_tcp} & Training fails & Knows the goal but not itself \\
+    24D & 24 & (complete) & $92$--$100\%$ & Approximately identifiable (\cref{prop:identifiable}) \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\paragraph{Remark.} This group of ablations is done on PickCube 24D to isolate the encoder-bias factor; the deployment 25D observation described in \cref{sec:obs_design} is an equivalent extension of 24D $+$ the hand channel (the hand channel does not participate in the identifiability argument, serving only the runtime backup switching), and the ablation conclusion can be extended by analogy to the 25D deployment observation.
+
+\subsection{Backup S1 V3b Main Survival Rate}\label{sec:exp_backup_s1}
+
+\textbf{Experiment.} Training for $3 \times 10^5$ steps on the PandaBackupPolicyS1 V3b geometry (\cref{sec:v3b_geometry}), with max\_disp $= 0.50$\,m; evaluation on $200$ episodes ($50$ episodes per mode).
+
+\textbf{Results.} The trained V3b version (\texttt{backup\_policy\_s1\_v3b\_300k}):
+\begin{itemize}
+  \item \textbf{Full survival rate}: $95.0\%$ (vs.\ $71.5\%$ of the V3 single-sphere version, vs.\ $100\%$ of the V2 single-sphere version, which however suffered elbow collisions on the real robot)
+  \item \textbf{Failure-mode distribution}: \texttt{hand\_collision} $3.0\%$ (V3 single-sphere version $17.5\%$, a $5\times$ drop); \texttt{excessive\_displacement} $5.5\%$
+  \item \textbf{Per-motion-mode breakdown}: LINEAR / ARC / STOP\_GO / PASSING all $\geq 90\%$, with the weakest ARC at $90.5\%$ (the residual $9.5\%$ of failures is mainly concentrated in this mode, and the mechanism awaits empirical validation by the real-robot evaluation after \cref{sec:sim_to_real_bridge})
+\end{itemize}
+
+The V3b geometry upgrade \textbf{significantly mitigates} (a $5\times$ drop in hand\_collision) but \emph{does not fully eliminate} the elbow/forearm collision failure mode observed in the real-robot deployment (\cref{sec:v3b_geometry} has elaborated on it); the V3 single-sphere version is retained as a comparison, proving that the direction of the geometry upgrade is necessary, but the breakdown of the residual $\sim 9.5\%$ of failures in the ARC mode (exactly which link sphere collides) is left as future work.
+
+\subsection{Backup Bias Robustness Zero-Shot}\label{sec:exp_backup_bias}
+
+\textbf{Hypothesis.} The backup policy is naturally robust to encoder bias and needs no bias-aware training (the empirical evidence for the fourth reason of \cref{sec:backup_paradigm}).
+
+\textbf{Experiment.} Using the S1 baseline checkpoint of \cref{sec:exp_backup_s1} (bias-free training), $200$ episodes are run respectively in two evaluation environments: (a) PandaBackupPolicyS1 (no bias); (b) PandaBackupPolicyS1BiasJ1 (J1 random bias $b_1 \sim \mathcal{U}[0, 0.25]$\,rad).
+
+\textbf{Results.} The survival rate is $99.0\%$ for the baseline vs.\ $98.5\%$ for BiasJ1, and the gap of $0.5\%$ is within the sampling-noise range of $200$ ep ($\pm 1.5\%$ at $95\%$ CI).
+
+\textbf{Interpretation caveat (a sanity check rather than a robustness result).} This experiment serves as a \emph{decoupling validation (sanity check)} rather than an additional robustness proof: the backup policy only reads \texttt{tcp\_true} (an external independent channel), the encoder bias is physically invisible to its observation layer, so ``zero degradation'' is a design expectation rather than a learned bias robustness. What this result demonstrates is that ``the backup observation path is already decoupled from the encoder path,'' so the cost of bias-aware training can be saved; the genuine bias-robustness proof is still in \cref{sec:exp_h2} (the H2/H3 task-policy experiments).
+
+\subsection{Reward V1 / V2 / V3 Evolution Training Curves}\label{sec:exp_reward_evolution}
+
+\textbf{Experiment.} Three groups of training, in the same PandaBackupPolicyS1 environment and under the same SAC hyperparameters, use three rewards: V1 (proximity) / V2 (all-negative) / V3 (non-negative $+$ large termination). Each group uses $3$ seeds and $2 \times 10^5$ steps.
+
+\textbf{Recorded metrics.} V1: the average cumulative TCP displacement (which should approach the $15$\,cm upper limit); V2: the average episode reward (which should continuously deteriorate from $\sim -0.88$ to $\sim -1.00$) $+$ the average episode length (which should shorten); V3: the average episode reward (which should converge stably to $\sim +9$ to $+10$) $+$ the survival rate (which should rise to $\sim 99\%$).
+
+\textbf{Results.} The three groups of training curves confirm the design principles of \cref{sec:backup_reward}:
+\begin{itemize}
+  \item \emph{V1}: the policy learns to run far away, the average displacement approaches the $15$\,cm upper limit, triggering a large number of \texttt{excessive\_displacement} terminations---typical reward hacking.
+  \item \emph{V2}: the average reward deteriorates monotonically from $-0.88$ to $-1.00$, and the episode length shortens until the collision occurs on almost the first step---``dying fast is better than dying slow.''
+  \item \emph{V3}: converges stably to the $+9$ to $+10$ range, the survival rate rises to $\sim 99\%$, corresponding to the final result of \cref{sec:exp_backup_s1}.
+\end{itemize}
+
+\subsection{Backup S2 Multi-Obstacle Scenario Extension}\label{sec:exp_backup_s2}
+
+\textbf{Experiment.} PandaBackupPolicyS2 (a moving $+$ a static dual obstacle), $114$D observation ($38 \times 3$ frame stacking), UTD $= 4$ (UTD $= 8$ collapses after $1 \times 10^5$ steps of training), $2 \times 10^5$ steps.
+
+\textbf{Results.} The survival rate is $83$--$91\%$ (with a relatively large variance over the two evaluations); the \texttt{hand\_collision} rate is $13.5\%$ (vs.\ $0.5\%$ for the S1 baseline, a $26\times$ rise); the weakest modes are ARC $75.0\%$ / STOP\_GO $81.8\%$, and the strongest mode is PASSING $91.0\%$. The drop from $99\%$ for a single obstacle to $\sim 85\%$ for multiple obstacles is because \textbf{multi-obstacle geometry is itself more difficult} (the escape cone narrows, and the sample combinations rise from $50$ to $2500$), not because the policy cannot learn well. This proves that the architecture of this section is still extensible to multi-obstacle scenarios.
+
+\section{The Bridge from Simulation to the Real Robot}\label{sec:sim_to_real_bridge}
+
+The simulation loop given in the previous section provides two pieces of evidence for the real-robot deployment of the next chapter, but their scope of applicability must be strictly delimited. \textbf{The identifiability proposition (\cref{prop:identifiable}) has been empirically validated in the 24D ablation of \cref{sec:exp_ablation} as the information-theoretically ``success signal path''}---but it must be made clear: the first real-robot run takes only the \emph{privileged half} of that path (the external independent TCP \texttt{tcp\_true}), and has not yet put the corrupted encoder path into use, so the success-rate matrix of \cref{ch:real_chapter} validates that ``the success signal path proven feasible in sim can still run through on the real robot,'' and \emph{not} the real-robot loop of \cref{prop:identifiable} that ``the biased $\vect{q}+\vect{b}$ and $\vect{o}_\text{real}$ are jointly identifiable''; the two-step ablation of the latter (first validating that \texttt{tcp\_biased} alone fails, then validating that $+\vect{q}+\vect{b}$ restores success) is left as the future work of \cref{ch:conclusion}. In other words, \textbf{the simulation-side H2/H3 has been closed; the real-robot side takes only the ``clean half'' of that path, and the real-robot loop of the complete identifiability path is not yet closed}.
+
+\textbf{The backup policy \texttt{backup\_policy\_s1\_v3b\_300k} is used directly as the real-robot checkpoint} (not retrained), accompanied by the Route A center-dist geometric alignment of \cref{sec:backup_real_deploy} and the V3b threshold $D_\text{SAFE} = 0.40$\,m. It should be noted that the V3$\to$V3b geometry upgrade was forced upon the simulation by a failure mode observed in the real-robot deployment (the elbow/forearm collision of the V3 single-sphere version), and the real-robot V3b evaluation, given in \cref{subsec:exp_backup_real}, is \emph{still in a pending-data state}---the sim V3b $95\%$ survival rate constitutes the expected upper bound of the real evaluation, and the size of the gap is yet to be measured. The comparative analysis of HIL-SERL converging stably in simulation but failing on the real robot is given in \cref{subsec:hilserl_failure} (the real-robot negative-result post-mortem).
+
+The next chapter, \cref{ch:real_chapter}, gives the complete stack of the real-robot deployment: the hardware architecture and the B$+$D bias injection, the real-robot deployment of the task policy (BC $+$ HG-DAgger), the real-robot deployment of the backup policy (WiLoR $+$ the Route A FSM), and the three-task joint fault-injection 4-column success-rate matrix---the core experimental data of this thesis.

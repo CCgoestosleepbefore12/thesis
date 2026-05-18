@@ -1,0 +1,32 @@
+% Chapter 8: Conclusion and Outlook
+
+\chapter{Conclusion and Outlook}\label{ch:conclusion}
+
+\section{Summary of the Work}\label{sec:summary}
+
+Centered on the problem of ``the online adaptation of an industrial robot under encoder calibration bias,'' this thesis proposes a fault-tolerant manipulation framework based on hierarchical imitation and reinforcement learning (the title: Hierarchical Imitation and Reinforcement Learning for Fault-Tolerant Manipulation). Three contributions are summarized below.
+
+\textbf{Contribution 1 (theory)}: encoder bias is formalized as a POMDP latent variable, a one-source-three-effect causal-chain model is proposed, and it is proved through rigorous propositions that the bias is non-identifiable when relying only on the basic observation (\cref{prop:non_identifiable}) and becomes approximately identifiable once an independent external position observation is introduced (\cref{prop:identifiable}); it is further clarified that ``identifiability $\neq$ solvability,'' which establishes the necessity of randomized-bias training.
+
+\textbf{Contribution 2 (method)}: a fault-tolerant manipulation framework of a task $\oplus$ backup dual-policy hierarchy $+$ a sim/real dual-end paradigm is designed. The shared method layer (\cref{ch:task_policy}) contains the observation design, randomized-bias training, and the shared network architecture; the simulation side uses HIL-SERL to complete the H1--H3 experimental loop (\cref{ch:sim_chapter}), and the real-robot side uses BC $+$ HG-DAgger for deployment (\cref{ch:real_chapter}); the backup policy is trained by pure-simulation SAC $+$ DR and then directly transferred to the real robot, hard-switched against the task policy at runtime by the three-state FSM of the Hierarchical Supervisor. The paradigm choice is determined by the three axes of (observation modality $\times$ data scale $\times$ safety constraint), and the task and backup policies are two instances of this decision principle.
+
+\textbf{Contribution 3 (empirical)}: a B$+$D dual-injection-point encoder-bias injection is implemented, and a $4$-column joint success-rate matrix evaluation (a $2\times2$ ``training bias $\times$ test bias'' factorial) is completed on the three real-robot tasks \texttt{pickup}, \texttt{wipe}, and \texttt{pickandplace}. A methodology-level negative result is also reported---the failure of HIL-SERL on the real robot: the SAC online stage drifts substantially after the actor is unfrozen under the small-data, sparse-reward, and $10$\,Hz real-robot throughput condition, providing empirical support for switching to BC $+$ HG-DAgger on the real robot.
+
+\section{Limitations}\label{sec:limitations}
+
+\begin{itemize}
+  \item \textbf{The real-robot bias loop is not closed}---the 14-dimensional real-robot observation uses the \texttt{tcp\_true} privileged channel (\cref{subsec:real_obs}), which in fact bypasses the implicit-identification mechanism of ``corrupted encoder signal $+$ external position signal'' in \cref{prop:identifiable}; the ``with bias'' column of the real-robot \cref{sec:real_experiments} validates only the end-to-end success rate under the privileged signal path, and is not a complete identifiability loop.
+  \item \textbf{The bias types are limited}---this thesis covers only J1 single-joint $+$ fixed/random bias that is constant within an episode, and does not address time-varying latent variables such as temperature drift or multi-joint coupled bias.
+  \item \textbf{The platform and task scale are narrow}---this thesis uses a single Franka Panda platform $+$ three kitchen-scenario tasks, so the generalizability of the paradigm-choice decision principle needs to be validated on more platforms and tasks.
+  \item \textbf{The HIL-SERL negative result has limited scope}---it is an observation under an $N=1$ single-platform, $10$\,Hz single-throughput condition, and ``Q-surface flatness'' as the root cause is still a \emph{leading hypothesis} rather than a confirmed conclusion (\cref{subsec:hilserl_failure}); whether HIL-SERL still fails under higher throughput and a larger data scale is not empirically tested in this thesis.
+\end{itemize}
+
+\section{Future Work}\label{sec:future_work}
+
+\paragraph{Two-step ablation of real-robot bias robustness} Corresponding to the scope limitation of \cref{subsec:real_obs}, the complete identifiability loop is moved to the real robot in two steps: (i)~replace \texttt{tcp\_true} in the real-robot 14-dimensional observation with \texttt{tcp\_biased} (i.e., $\text{FK}(\vect{q}+\vect{b})$)---by \cref{prop:non_identifiable}, this should fail; (ii)~on the basis of (i), add the encoder path $\vect{q}+\vect{b}$ back---by \cref{prop:identifiable}, this should restore success, isomorphic to the simulation H2/H3 path. Once the two-step ablation is implemented, the implicit-$\vect{b}$ recovery mechanism at the real-robot level is empirically demonstrated.
+
+\paragraph{An explicit bias estimator and context encoding} This thesis uses an end-to-end policy to implicitly identify $\vect{b}$; the explicit-estimator path can be explored---online least-squares estimation from the Jacobian (short term) or an RMA-style GRU inferring from the multi-step action-state sequence (medium term), providing the policy with $\hat{\vect{b}}$ as a direct input, corresponding to the RNN/GRU implicit-memory path mentioned in \cref{sec:pomdp_methods}.
+
+\paragraph{A real-robot comparison of residual RL and offline RL} \cref{sec:residual_rl} has already pointed out that this thesis did not conduct a systematic comparison of residual RL against BC $+$ HG-DAgger on the real robot; in the future, residual RL (a base controller $+$ an RL residual) and offline RL (IQL/CQL on the demos) can be added as baselines, quantifying the boundary of the paradigm-choice decision principle.
+
+\paragraph{Multi-joint / time-varying bias and more fault types} Extending to multi-joint coupled bias, time-varying latent variables of the temperature-drift type, and other fault types such as encoder noise, joint stiction, and actuator degradation, so as to validate the scope of applicability of the framework.

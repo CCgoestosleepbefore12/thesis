@@ -1,0 +1,194 @@
+% 第4章 任务策略：方法设计与共享网络架构
+
+\chapter{任务策略：方法设计与共享网络架构}\label{ch:task_policy}
+
+\section{方法设计动机}\label{sec:task_method_motivation}
+
+\cref{ch:problem_formulation} 从物理因果链与 POMDP 形式化刻画了编码器偏差问题的结构，并通过可观测性分析给出了"信息上能辨识 $\vect{b}$"的充分条件。本节把这些理论结论转化为三个具体的方法设计选择，并简要说明每个选择的依据与对应章节。
+
+\paragraph{设计选择一：观测空间增强} 根据\cref{prop:non_identifiable}，仅依赖基础本体感觉观测——其中关节角读数 $\vect{q}+\vect{b}$ 以及由其经正运动学得到的 TCP 位置 $\text{FK}(\vect{q}+\vect{b})$ 均被偏差污染，而关节速度（编码器读数对时间求导，静态偏差 $\dot{\vect{b}}=\vect{0}$ 被消去）与夹爪开度（来自控制指令而非编码器）不受偏差影响——\emph{无法}区分不同的 $(\vect{q}_{\text{true}}, \vect{b})$ 对；而\cref{prop:identifiable} 表明，引入一个独立于编码器的外部位置观测 $\vect{o}_{\text{real}}$ 可以打破 $(\vect{q}_{\text{true}}, \vect{b})$ 之间的平移对称性，使系统近似可辨识。因此本文第一个设计选择是\textbf{在观测中显式加入外部位置信号}，扩展为 25 维观测空间（含独立的外部 TCP 与人手状态等分量）。具体实现见\cref{sec:obs_design}。
+
+\paragraph{设计选择二：随机偏差训练} \cref{subsec:identifiability_vs_solvability} 进一步指出，即便信息充分，最优策略仍然是\emph{以偏差为条件}的函数：对不同的 $\vect{b}$，$\pi^\star$ 必须输出不同的补偿动作（见\cref{eq:conditional_policy}）。若训练过程仅暴露单一固定 $\vect{b}$，策略只能在该点附近学到"单点条件化"——在偏差分布的其他位置（尤其是 $\vect{b}=\vect{0}$）会产生过补偿现象。因此本文第二个设计选择是\textbf{按 episode 从偏差分布 $P(\vect{b})$ 中随机采样进行训练}，让策略暴露于整个偏差分布。这一思路与 Tobin 等人在视觉 sim-to-real 中采用的域随机化~\cite{tobin2017domain} 在原则上同源——两者都是"训练时让策略见过未来部署环境的分布"。\cref{sec:random_bias} 将具体描述随机偏差训练，\cref{sec:exp_h2} 的固定偏差基线实验将给出单点条件化过补偿的直接实证。
+
+\paragraph{设计选择三：仿真验证与真机部署的双端范式} 前两个选择回答了"观测什么"和"训练什么分布"，但仍留下"在哪里训练、用什么算法"的执行层问题。本文采取\textbf{仿真验证理论与真机模仿部署}的双端范式，由\emph{观测模态、数据规模、安全约束}三者共同决定。
+
+\emph{仿真侧}采用 Luo 等人的 HIL-SERL 框架~\cite{luo2025hilserl}（基于 Ball 等人 RLPD~\cite{ball2023rlpd} 加人在回路干预），用于验证可观测性命题与随机偏差鲁棒训练（H1–H3 实验），具体训练协议见\cref{sec:sim_task_train}。
+
+\emph{真机侧}因 sparse reward 与 $50$–$200$ demo 量级的小数据条件下 SAC online 阶段 actor 解冻会大幅漂移（论文级 negative result，详见\cref{subsec:hilserl_failure}），改用 Kelly 等人 HG-DAgger~\cite{kelly2019hgdagger}（人类介入式模仿学习的思路源自 Ross 等人 DAgger~\cite{ross2011dagger} 的 query-by-policy 范式；HIL-SERL 与 HG-DAgger 均属 human-initiated 变种）——基于 BC pretrain 的初始策略加操作员介入式纠错，具体训练协议见\cref{sec:real_task_deploy}。两端在共享方法层面（25 维观测 + 共享网络架构 + 稀疏奖励）一致，仅训练算法与具体协议不同。
+
+\textbf{真机观测的简化与 future work。}真机部署观测进一步简化为 $14$ 维（详见\cref{subsec:real_obs}），其中编码器偏差路径暂未进入观测通道，TCP 信号统一来自外部独立通道——对应\cref{prop:identifiable} 中已被仿真验证的"成功信号路径"。这一简化使真机首跑专注于 sim-to-real 部署 pipeline 与故障注入下的端到端成功率验证（\cref{sec:real_experiments} 中三任务联合 backup 的 $4$ 列成功率矩阵）；真机层的偏差鲁棒性闭环——把"被污染编码器信号"与"外部位置信号"两路同时投入真机训练——留作\cref{ch:conclusion} 的两步 future work 消融。
+
+\paragraph{小结} 上述三个设计选择可以简明地映射为\cref{tab:method_mapping} 所示的"理论-约束-方法"对应关系。后续各节将按此顺序展开具体实现。
+
+\begin{table}[htbp]
+  \centering
+  \caption{从\cref{ch:problem_formulation} 的理论分析与现实约束到本章方法设计的映射}
+  \label{tab:method_mapping}
+  \footnotesize
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    来源 & 具体依据 & 方法设计 & 展开章节 \\
+    \midrule
+    理论结论 & \cref{prop:identifiable}（可辨识性） & 观测空间增强（25D） & \cref{sec:obs_design} \\
+    理论结论 & \cref{subsec:identifiability_vs_solvability}（条件补偿） & 随机偏差训练 & \cref{sec:random_bias} \\
+    现实约束 & 视觉 sim-to-real gap & 真机部署与 IL 路径 & \cref{sec:real_task_deploy} \\
+    现实约束 & 稀疏奖励探索困难（仿真侧） & HIL-SERL（demo + HIL bootstrap） & \cref{sec:sim_task_train} \\
+    现实约束 & 真机 sparse + 小数据 SAC 漂移 & BC pretrain + HG-DAgger & \cref{sec:real_task_deploy} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{观测空间设计}\label{sec:obs_design}
+
+\subsection{观测向量构成}\label{subsec:obs_vector}
+
+任务策略的低维状态观测向量 $\vect{o}_t \in \mathbb{R}^{25}$ 由七组分量顺序拼接而成（\cref{tab:obs_25d}）：前 $18$ 维来自机器人本体感觉通路（编码器读数与控制指令），中间 $3$ 维为独立的外部 TCP 位置，末尾 $4$ 维为人手状态，用于运行时切换到\cref{sec:backup_sim_train} 的备份避让策略。$\vect{o}_\text{real}$ 的噪声建模与 TCP 定位方案的抽象化处理见\cref{subsec:obs_image_tcp}。\footnote{仿真实现层面环境接口为 $31$ 维默认实现，其中方块位置 $\vect{o}_\text{block}$ 与目标板位置 $\vect{o}_\text{plate}$ 在本章实验场景下按 episode reset 至确定性位置、对策略恒为常量信道。为避免读者误以为本方法依赖物体真值位置、并与真机简化观测对齐（详见\cref{sec:real_task_deploy}），本文以剔除两路常量信道后的 $25$ 维形式描述观测空间——常量维度的梯度恒为零，定量结果与原 $31$ 维实现等价（前提是输入归一化对常量信道做特判：本工作通过 \texttt{compute\_dataset\_stats.py} 中的 const-channel 守卫保证 min-max 归一化在常量信道上不产生 NaN，详见\cref{subsec:three_tasks}）。}
+
+\cref{tab:obs_25d} 同时标注了各分量的两个正交性质——\emph{是否受偏差 $\vect{b}$ 污染}与\emph{对任务目标的相关性}。后者分为四类：\textbf{直接相关}（$\vect{o}_\text{real}$ 与 $\text{FK}(\vect{q}+\vect{b})$）直接参与位姿决策；\textbf{间接相关}的关节角 $\vect{q}+\vect{b}$ 仅在关节极限或几何约束触发时被利用；\textbf{结构性}的关节速度与夹爪开度主要服务于控制闭环的平滑与状态闭合；\textbf{运行时安全相关}的 $h_\text{active}$ 与 $\vect{p}_\text{hand}$ 不进入任务奖励梯度——它们的作用是让任务策略与\cref{sec:backup_sim_train} 的备份避让策略共享同一套感知管线，并在运行时被距离判据用作策略切换的依据（任务策略虽然能"看见"人手但不会因此学会避让，避让行为完全由备份策略在切换后承担）。这一分类揭示出本节的核心设计思路：两个直接任务相关的位置量中，$\text{FK}(\vect{q}+\vect{b})$ 受污染，$\vect{o}_\text{real}$ 未受污染——正是这组\emph{直接相关且彼此不一致}的位置信号为策略隐式辨识 $\vect{b}$ 提供了信息来源。
+
+\begin{table}[htbp]
+  \centering
+  \caption{任务策略的 25 维状态观测构成}
+  \label{tab:obs_25d}
+  \small
+  \begin{tabular}{@{}clclcc@{}}
+    \toprule
+    索引 & 分量 & 维度 & 来源 & 受偏差污染 & 任务相关 \\
+    \midrule
+    $[0, 6]$   & 关节角 $\vect{q}+\vect{b}$ & 7 & 编码器读数 & 是 & 间接 \\
+    $[7, 13]$  & 关节速度 $\dot{\vect{q}}$ & 7 & 编码器读数对时间差分 & 否 & 结构性 \\
+    $14$       & 夹爪开度 & 1 & 控制指令 & 否 & 结构性 \\
+    $[15, 17]$ & TCP 位置 $\text{FK}(\vect{q}+\vect{b})$ & 3 & 有偏正运动学 & 是 & 直接 \\
+    $[18, 20]$ & 真实 TCP $\vect{o}_\text{real}$ & 3 & 外部定位 $+$ $5$\,mm 噪声 & 否 & 直接 \\
+    $21$       & 人手激活 $h_\text{active}$ & 1 & 视觉检测管线 & 否 & 运行时安全 \\
+    $[22, 24]$ & 人手位置 $\vect{p}_\text{hand}$ & 3 & 视觉检测 $+$ D455 深度 & 否 & 运行时安全 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{信息通路}\label{subsec:obs_dataflow}
+
+\cref{fig:obs_dataflow} 示意了 25 维观测在两条独立通路上的流动（污染标记见图中红色标签）。需要指出，25 维内部按角色可进一步分为\emph{辨识相关}与\emph{运行时安全}两部分：前者包含编码器路径全部 18 维加外部独立 TCP $\vect{o}_\text{real}$（共 21 维），是\cref{prop:identifiable} 所要求的可辨识性论证的全部依据——只需一路独立外部位置信号即可打破 $(\vect{q}_\text{true}, \vect{b})$ 的平移对称性；后者包含人手激活 $h_\text{active}$ 与位置 $\vect{p}_\text{hand}$ 共 4 维，仅服务于运行时与备份策略的距离触发切换，不参与可辨识性论证。两路联合观测使系统满足近似可辨识性的充分条件——策略原则上可通过比较 $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 的不一致隐式恢复 $\vect{b}$，并据此输出\cref{subsec:identifiability_vs_solvability} 所要求的条件补偿动作；其量化误差受 $\vect{o}_\text{real}$ 噪声 $\epsilon = 5\,$mm 与机械臂雅可比条件数 $\kappa(\mat{J})$ 限制，具体上界本文不展开。本文不对估计结构施加显式约束（如卡尔曼滤波或专门的 $\vect{b}$ 预测头），而交由端到端优化自行组织。
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_4_1_obs_dataflow.png}
+  \caption{25 维观测空间的信息通路示意。编码器路径（左，18D）中的关节角与由其导出的 TCP 位置被偏差 $\vect{b}$ 污染，关节速度与夹爪开度不受影响；外部观测路径（右，7D）包含独立 TCP 与人手信息，全部与编码器解耦。两路信号在策略网络处汇合，策略原则上可通过 $\vect{q}+\vect{b}$ 与 $\vect{o}_\text{real}$ 之间的不一致隐式恢复 $\vect{b}$。}
+  \label{fig:obs_dataflow}
+\end{figure}
+
+\subsection{为何保留被污染的本体感觉}\label{subsec:obs_keep_contam}
+
+一个自然的疑问是：既然 $\vect{q}+\vect{b}$ 与 $\text{FK}(\vect{q}+\vect{b})$ 已被偏差污染，为何不直接剔除、仅以 $\vect{o}_\text{real}$ 作为 TCP 的唯一来源？本文选择保留两者，基于两点考虑。
+
+\textbf{信息完整性。}按\cref{subsec:identifiability_vs_solvability} 的分析，策略能够辨识 $\vect{b}$ 的前提是同时持有"被污染的编码器信号"与"独立的外部位置信号"——两者之\emph{差}才承载偏差信息。若剔除前者，策略仅剩 $\vect{o}_\text{real}$ 一路，反而失去推断 $\vect{b}$ 所需的另一半观测。
+
+\textbf{运行时容错。}真机外部定位系统（ArUco/AprilTag、OptiTrack 等）可能出现短暂遮挡、标记丢失或通讯抖动；保留本体感觉通路意味着当 $\vect{o}_\text{real}$ 暂时不可用时，策略仍能退化到"仅依靠本体感觉"的带偏差行为，而非彻底失效。
+
+\subsection{图像观测与 TCP 定位的通用化处理}\label{subsec:obs_image_tcp}
+
+\paragraph{图像观测。}任务策略另接收前视相机（场景全局视角）与腕部相机（夹爪局部视角）两路 RGB 图像，由\emph{冻结的} DINOv3-S（ViT-S/16，约 $22$\,M frozen 参数，自监督预训于 LVD-1689M 数据集）~\cite{simeoni2025dinov3} 编码后与 $25$ 维状态观测共享主干（详见\cref{sec:network}）。仿真渲染与真实相机在纹理、光照与噪声分布上的显著差距正是\cref{sec:task_method_motivation} 论证"真机部署需在真机上继续学习"的直接依据。
+
+\paragraph{\texttt{real\_tcp} 的噪声建模。}仿真训练中，$\vect{o}_\text{real}$ 由 MuJoCo 场景真值叠加 $\mathcal{N}(\vect{0}, (0.005\,\text{m})^2\mathbf{I})$ 高斯噪声得到。$5\,\text{mm}$ 量级与本文真机 ArUco 标定的实测中位误差量级相符（具体标定流程见\cref{ch:real_chapter}），以降低 sim-to-real 迁移时因未建模噪声引起的性能衰减。
+
+\paragraph{TCP 定位方案的抽象化。}本章不将 $\vect{o}_\text{real}$ 绑定到具体实现——可选方案包括 ArUco 或 AprilTag 视觉标记、OptiTrack 光学动捕等，只要该通路满足三条最小要求：独立于关节编码器、能以米制给出 TCP 位置、典型噪声量级与 $5$\,mm 可比。具体选型与标定细节见\cref{ch:real_chapter}。
+
+\section{随机偏差训练}\label{sec:random_bias}
+
+\cref{subsec:identifiability_vs_solvability} 指出，即便观测空间已满足可辨识性条件，最优策略仍必须以偏差 $\vect{b}$ 为条件输出不同的补偿动作（\cref{eq:conditional_policy}）。若训练过程仅暴露策略于单一固定的 $\vect{b}_0$，策略至多能在该点附近学到"单点条件化"——一旦部署环境的真实偏差偏离 $\vect{b}_0$（尤其是回到 $\vect{b}=\vect{0}$ 的标定状态），策略将沿着训练时学到的补偿方向过度修正，产生\emph{过补偿}现象。本文通过按 episode 随机采样偏差来规避这一问题。
+
+\paragraph{训练协议。}将偏差视为 episode 级环境参数：每次 reset 时为每个关节独立采样 $b_i \sim \mathcal{U}[0, b_{\max}]$（$i = 1, \dots, 7$），episode 内保持恒定直至下一次 reset；本文取 $b_{\max} = 0.25\,\text{rad}$（约 $14^\circ$），显著大于\cref{sec:bias_sources} 中综述的工业机器人典型偏差量级，用以对策略施加相对激进的压力测试。采样得到的 $\vect{b}$ 按\cref{sec:sim_implementation} 描述的故障注入方式作用于仿真环境内部的编码器读数与控制器参考值，\emph{不作为任何形式的额外输入}提供给策略——策略只能通过\cref{sec:obs_design} 定义的 25 维观测隐式感知偏差。
+
+\paragraph{与域随机化的联系。}这一做法与 Tobin 等人提出的域随机化~\cite{tobin2017domain} 在原则上同源：两者都依赖"让策略在训练时见过目标部署分布的样本"这一基本思路。但需要指出一个本质区别：Tobin 等人随机化的视觉参数对策略而言是\emph{冗余变量}（应被忽略），而本文随机化的 $\vect{b}$ 是策略\emph{必须 condition} 的隐变量——按\cref{subsec:identifiability_vs_solvability} 的条件补偿要求，最优策略对不同 $\vect{b}$ 必须输出不同动作。两者是相反的信息论范式，仅在"训练时见过部署分布"这一表面思路上同源；本文的随机化目标是让策略学会从观测中隐式恢复并 condition 隐变量，而非习得对它的不变性。另一点区别是，随机偏差训练优化的是偏差分布上的\emph{期望}回报而非鲁棒 MDP 意义下的最坏情况回报——本文关心的是真机实例之间的平均表现，而非最差情况下的保证性能。
+
+\paragraph{固定偏差基线的实验预告。}为直接验证"单点条件化~$\to$~零偏差过补偿"这一假设，\cref{sec:exp_h2} 设计了固定偏差与随机偏差两组训练的对照实验：两组策略在相同的网络结构与训练超参下，分别暴露于 $b_i = 0.2\,\text{rad}$（固定，所有 $i = 1, \dots, 7$）与 $b_i \sim \mathcal{U}[0, 0.25\,\text{rad}]$（随机），随后在 $\vect{b}=\vect{0}$ 以及若干未在训练中出现过的偏差值上分别评估抓取成功率，以刻画两种训练方案在偏差分布上的泛化差异。
+
+网络架构与训练超参的具体形式统一在\cref{sec:network} 给出，适用于本章仿真与真机两条路径。
+
+\section{网络架构与训练目标}\label{sec:network}
+
+本章描述的任务策略在仿真与真机两端共享同一套网络架构——一个\emph{共享编码器}、三个\emph{独立网络头}与对应的\emph{训练损失定义}。本节依次给出这些具体形式（\cref{fig:network_arch}）；具体训练协议（demo warmup、在线混合采样、HG-DAgger 迭代等）分别见\cref{sec:sim_task_train}（仿真 HIL-SERL）与\cref{sec:real_task_deploy}（真机 BC + HG-DAgger）。
+
+\begin{figure}[!htbp]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_4_2_network_arch.png}
+  \caption{任务策略的网络架构。三路输入（仿真 $25$ 维 / 真机 $14$ 维状态 $+$ 前视、腕部 $128\times 128$ RGB）分别经各自的编码器处理后，按通道拼接为 $768$ 维的共享 feature $\vect{h}$；三个头共享 $\vect{h}$ 作为输入但输出与训练损失各异——连续 Actor 产生 6 维 Cartesian 末端动作、Twin Critic 输出两个标量 Q 值（取最小以抑制高估）、离散 Gripper Critic 输出 3 维 Q 值选择夹爪动作。DINOv3-S 主干在训练中保持冻结，只更新其后的投影层、状态编码器与三个头。仿真 HIL-SERL 训练全部四组损失，真机 BC 阶段仅训练连续 Actor（critic 与温度参数作为 ckpt schema 占位）。}
+  \label{fig:network_arch}
+\end{figure}
+
+\paragraph{输入编码。}三路输入的处理管线完整画在\cref{fig:network_arch} 中，此处仅陈述要点：仿真 $25$ 维（真机 $14$ 维）状态观测按逐维 Min-Max 归一化到 $[-1, 1]$ 后由 Linear $+$ LN $+$ Tanh 投影到 $256$ 维；$128 \times 128$ 的前视、腕部 RGB 各自按 ImageNet 均值标准差归一化后送入\emph{冻结}的 DINOv3-S 主干~\cite{simeoni2025dinov3}（ViT-S/16，约 $22$\,M frozen 参数），输出 patch token 序列被 reshape 成 $384 \times 8 \times 8$ 的 spatial feature map（$128/16 = 8$ patch grid），再经 SpatialLearnedEmbeddings 与 $F = 8$ 个 learnable spatial kernel 做 channel-wise 加权求和——每个 $(c, f)$ 对（共 $384 \times 8$ 个）输出 $\sum_{h, w} \text{feat}_{c, h, w} \cdot \text{kernel}_{c, h, w, f}$ 一个标量——得 $C \cdot F = 3072$ 维向量，最后过 Dropout$(0.1) +$ Linear$(3072 \to 256) +$ LN $+$ Tanh 压到 $256$ 维 latent。该 spatial pooling 设计相对全局平均池化保留了 $F$ 个独立 spatial pattern 的判别力（避免把"物块在左上 vs 右下"混为同一表示），相对 spatial softmax 又能学复杂 attention pattern 而非单一 keypoint。三路 $256$ 维特征按通道拼接得到 $768$ 维共享 feature $\vect{h}$。DINOv3-S 主干参数在 sim 与 real 训练过程中均不更新。
+
+\paragraph{三个网络头。}三个头均以两层 MLP 为主体（隐层维度 $[256, 256]$、激活函数 ReLU），但输入、输出与训练损失各不相同。\emph{连续 Actor} 以共享 feature $\vect{h}$ 为输入，经 $[768, 256, 256]$ MLP 后并接两个 Linear$(256 \to 6)$ 头分别输出均值 $\vect{\mu}$ 与对数标准差 $\log\vect{\sigma}$，通过 \texttt{TanhMultivariateNormalDiag} 分布采样得到 6 维连续动作 $\vect{a}^c \in \mathbb{R}^6$（对应 3 维末端位置增量与 3 维末端姿态增量）。\emph{Twin Critic} 包含两份独立初始化的 Q 网络 $Q_{\theta_1}, Q_{\theta_2}$，各自以 $[\vect{h};\, \vect{a}^c]$ 为输入、经 $[774, 256, 256, 1]$ MLP 输出标量 $Q \in \mathbb{R}$，训练中取两者的最小值以抑制价值高估（Clipped Double Q-Learning）。\emph{离散 Gripper Critic} 以共享 feature 为输入、经 $[768, 256, 256, 3]$ MLP 输出 3 维 $Q$ 值向量，对应代码中编号为 $\{0{:}\text{关},\, 1{:}\text{保持},\, 2{:}\text{开}\}$ 的三种离散夹爪动作，采样时取 $\arg\max$ 作为贪婪策略。温度参数 $\alpha$ 以可学习的 $\log\alpha$ 参数化、自动调节（初始值 $\alpha_0 = 0.01$），属于独立的优化器参数组。
+
+\paragraph{训练目标。}连续分支遵循 SAC 的标准三个损失（熵正则化与自动温度调节的背景见\cref{ch:related_work}）：
+\begin{align*}
+  L_Q &= \mathbb{E}_{(s,\vect{a},r,s')\sim\mathcal{B}}\!\left[\left(Q_\theta(s,\vect{a}) - y\right)^2\right], \quad y = r + \gamma(1-d)\!\left[\min_i Q_{\bar{\theta}_i}(s', \vect{a}') - \alpha \log \pi_\phi(\vect{a}'|s')\right], \\
+  L_\pi &= \mathbb{E}_{s\sim\mathcal{B},\, \vect{a}\sim\pi_\phi}\!\left[\alpha \log \pi_\phi(\vect{a}|s) - \min_i Q_{\theta_i}(s, \vect{a})\right], \\
+  L_\alpha &= -\,\mathbb{E}\!\left[\alpha\left(\log \pi_\phi(\vect{a}|s) + \bar{\mathcal{H}}\right)\right],
+\end{align*}
+其中 $\vect{a}' \sim \pi_\phi(\cdot|s')$、$\bar{\mathcal{H}}$ 为目标熵、$\bar{\theta}_i$ 为目标网络参数。离散夹爪头则独立地以 Double DQN 形式的 MSE Bellman 损失训练：
+\begin{equation*}
+  L_{Q^g} = \mathbb{E}_{(s, a^g, r, s')\sim\mathcal{B}}\!\left[\left(Q^g_\psi(s, a^g) - y^g\right)^2\right], \quad y^g = r + \gamma(1-d)\, Q^g_{\bar{\psi}}\!\left(s',\; \arg\max_{a'} Q^g_\psi(s', a')\right),
+\end{equation*}
+其中 $a^g \in \{\text{关},\, \text{保持},\, \text{开}\}$（即\cref{fig:network_arch} 与上一段中代码编号 $\{0, 1, 2\}$ 对应的三种离散夹爪动作）。仿真 HIL-SERL 训练时四组损失的梯度都反向传播到各自的头参数与共享编码器的可训练部分（DINOv3-S 主干保持冻结），四组参数以各自的 Adam 优化器同步更新。
+
+真机 BC pretrain 阶段仅采用 $L_\text{BC} = -\mathbb{E}\left[\log \pi_\phi(\vect{a}\mid s)\right]$ 单一损失，optimizer 只更新连续 Actor 的 MLP 头、状态编码器、SpatialLearnedEmbeddings 与投影层；Twin Critic 与离散 Gripper Critic 在 BC 期间保持随机初始化、不参与梯度更新，仅作为 ckpt schema 占位以便日后切换路径时直接 \texttt{--resume} 加载。
+
+\paragraph{训练协议指针。}sim 与 real 的训练协议（demo warmup、在线混合采样、HG-DAgger 介入迭代等具体步骤）分别在\cref{sec:sim_task_train,sec:real_task_deploy} 给出。两端共享的训练超参数（学习率、batch size、$\gamma$、$\tau$、$\alpha_0$、image augmentation 等）以双列对照形式列于\cref{tab:hyperparams}，本节不再赘述协议细节。
+
+\begin{table}[htbp]
+  \centering
+  \caption{任务策略训练超参数（仿真 HIL-SERL 与真机 BC + HG-DAgger 对照；"---" 表示不适用）}
+  \label{tab:hyperparams}
+  \small
+  \begin{tabular}{@{}lcc@{}}
+    \toprule
+    超参数 & 仿真 HIL-SERL & 真机 BC + HG-DAgger \\
+    \midrule
+    总训练步数 & $10^5$ online & $20{,}000$ per BC iter \\
+    Demo warmup 步数（纯离线预训练） & 500 & --- \\
+    在线阶段首次学习前的环境步数 & 100 & --- \\
+    UTD 比例（每环境步的梯度更新次数） & 2 & --- \\
+    Actor 权重推送频率（Learner~$\to$~Actor） & 每 4 个梯度步 & --- \\
+    \midrule
+    Batch size $|\mathcal{B}|$ & $256$（$128+128$ 离线/在线） & $256$ \\
+    学习率（actor / critic / $\alpha$） & $3 \times 10^{-4}$ & $3 \times 10^{-4}$（仅 actor） \\
+    梯度裁剪范数 & $40.0$ & $40.0$ \\
+    折扣因子 $\gamma$ & $0.97$ & --- \\
+    目标网络软更新 $\tau$ & $0.005$ & --- \\
+    SAC 初始温度 $\alpha_0$ & $0.01$ & --- \\
+    \midrule
+    潜在维度 / MLP 隐层 & $256$ / $[256, 256]$ & 同左 \\
+    缓冲区容量（离线 / 在线） & $10^5$ / $10^5$ & --- \\
+    Image augmentation & --- & DrQ random\_shift, pad $= 4$ \\
+    \midrule
+    BC 离散头权重 $\lambda$ & --- & $0.5$ \\
+    Tanh-Gaussian $\vect{\sigma}$ clamp 范围 & --- & $[10^{-5},\, 10]$ \\
+    静止帧过滤阈值 \texttt{action\_norm\_min} & --- & $10^{-3}$（CLI 覆盖默认 $10^{-6}$） \\
+    \midrule
+    HG-DAgger 介入触发阈值 & --- & enter $0.05$ / exit $0.02$ \\
+    HG-DAgger 释放尾巴 \texttt{tail\_k} & --- & $10$ 帧 \\
+    每轮迭代 episode 数 & --- & $30$ \\
+    判停准则（介入率 $\leq 5\%$ 持续） & --- & 连续 $5$ episode \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{奖励设计}\label{sec:task_reward}
+
+\paragraph{奖励函数。}本文任务策略采用稀疏二值奖励：
+\begin{equation*}
+  r_t = \begin{cases}
+    1 & \text{若 episode 在步 $t$ 达成成功判定条件}, \\
+    0 & \text{否则}.
+  \end{cases}
+\end{equation*}
+在仿真训练中，成功判定由 MuJoCo 真值给出：方块与目标板在水平面的投影距离 $\lVert \vect{p}_\text{block}^{xy} - \vect{p}_\text{plate}^{xy}\rVert < 5\,\text{cm}$，且方块 $z$ 坐标 $< 5\,\text{cm}$（即方块已被放下而非悬在半空）。真机中改采用\emph{人工 keyboard reward 协议}替代自动距离判定：操作员通过四键键盘对每条 episode 给出二值 reward 与 episode 控制信号——\texttt{S} 启动 episode、\texttt{Enter} 标记成功（$r=1$，$\textit{terminal}$）、\texttt{Space} 标记失败（$r=0$，$\textit{terminal}$）、\texttt{Backspace} 整条丢弃（设置 \texttt{discard=True} 让本 episode 不进入 replay buffer 或 demo pickle）。该协议同时承担 episode 边界控制（无需自动 timeout 检测）与回放过滤（discard 信号），简化了真机数据闭环；具体实现见\cref{ch:real_chapter}。每个 episode 在成功 / 失败 / 丢弃 / 步数上限（$300$ 步 @ $10\,\text{Hz}$，即 $30\,\text{s}$）任一触发时终止；成功时那一步产生 $r_t = 1$，其余步为 $0$。两种机制都给出稀疏二值奖励信号，仅触发源不同（仿真自动判定 vs 真机人工裁决），均不向策略提供距离层面的密集信号。
+
+\paragraph{稀疏奖励的可行性。}一般设定下稀疏奖励常因探索困难而难以收敛，但本文两个具体约束使稀疏奖励反而比密集奖励更合适。
+
+(i)~\cref{sec:sim_task_train} 的 HIL-SERL 训练框架已通过离线 demo 引导（50 条成功 episode $+$ warmup）与训练全程的人在回路干预解决了稀疏奖励最核心的探索瓶颈——策略不必"从零摸索出第一次成功"，demo 与干预已经为 critic 提供了充足的正样本与纠错梯度。\emph{需指出该论证仅适用于仿真}：\cref{subsec:hilserl_failure} 复盘的真机 SAC 漂移现象表明，即便探索瓶颈被 demo $+$ HIL 解决，critic 仍可能因吞吐量限制无法 calibrate Q 表面、actor 解冻后漂移；探索瓶颈与 Q 估计准确性是\emph{两个独立瓶颈}，仿真满足前者即可，真机两者都需满足。本文真机改用不依赖 critic 的 BC $+$ HG-DAgger 正是为了绕过 Q 估计瓶颈。
+
+(ii)~除探索瓶颈外，密集奖励本身在本设定下还存在第二重隐患：在编码器偏差下，自然的密集奖励候选（如 $-\lVert\text{FK}(\vect{q}+\vect{b}) - \vect{p}_\text{block}\rVert$ 形式的 TCP-目标距离）本身就是\emph{被污染的信号}——它依赖 $\text{FK}(\vect{q}+\vect{b})$ 而非真实 TCP 位置，因此直接沿该密集信号优化会诱导策略把偏差的几何效应 hack 进 proxy 指标之中、偏离真实目标（即典型的 reward hacking，背景见\cref{ch:related_work}）。
+
+综合 (i) 与 (ii)，稀疏二值奖励是本文设定下最稳妥的选择。

@@ -1,0 +1,424 @@
+% Chapter 3: Encoder Bias Modeling and POMDP Formulation
+
+\chapter{Encoder Bias Modeling and POMDP Formulation}\label{ch:problem_formulation}
+
+\section{Encoder Calibration Bias in Industrial Robots}\label{sec:bias_sources}
+
+The closed-loop control of a serial-link industrial robot relies on the angular feedback of every joint. The low-level joint PD controller, the Cartesian-space impedance/admittance controller, and the high-level task planner all require the joint angle $\vect{q}_{\text{measured}}$ measured by the joint encoders as input, and establish the connection between joint space and task space through forward kinematics (FK) and the Jacobian matrix $\mat{J}(\vect{q})$~\cite{siciliano2010robotics}. In the ideal case, the encoder reading equals the true joint angle ($\vect{q}_{\text{measured}} = \vect{q}_{\text{true}}$), and the torque computation of the controller and the end-effector pose estimation of the observation module are both built on accurate state information. In a real industrial environment, however, this assumption is often broken: a systematic bias $\vect{b} \in \real^7$ may exist between the encoder reading and the true joint angle, such that
+\begin{equation}
+  \vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}.
+  \label{eq:encoder_bias}
+\end{equation}
+Because the control and the observation of the robot share the same encoder reading, the bias $\vect{b}$ corrupts both the control loop and the state observation simultaneously, a point analyzed in detail in \cref{sec:causal_chain}.
+
+\subsection*{Five Sources of Encoder Bias}
+
+Encoder calibration bias can be caused by a variety of physical mechanisms in industrial practice. ISO 9283:1998~\cite{iso9283} provides standardized test methods for performance characteristics of industrial robots such as pose accuracy, repeatability, and drift, and explicitly lists indicators such as pose drift and interchangeability, reflecting the prevalence of such bias in real deployment. The following classifies these sources by time scale and physical mechanism, and gives representative magnitudes obtainable from the existing literature or from engineering practice.
+
+\begin{enumerate}
+  \item \textbf{Factory calibration residual}: even after rigorous kinematic parameter identification, limited by the precision of the calibration equipment and the simplification of the kinematic model, a small residual bias still remains in the joint zero positions after factory calibration. As a concrete reference, Kana et al.~\cite{kana2022fast} carried out kinematic recalibration on a Kinova Gen3 seven-degree-of-freedom arm and reported zero-offset values of the seven joint angles distributed over the interval $[-0.0084,\,0.0088]$\,rad, roughly corresponding to the $0.5°$ scale. This is the \emph{only} one of the five sources in this thesis with direct empirical magnitude support.
+
+  \item \textbf{Temperature drift}: after a robot arm has run for a long time, the motors, reducers, and links produce thermal expansion due to heating, causing a slow drift of the end-effector pose. Gong et al.~\cite{gong2000nongeometric} modeled, through inverse calibration with a laser tracker, the coupled influence of geometric, stiffness, and time-varying thermal errors in industrial robots; Vocetka et al.~\cite{vocetka2021influence} further quantified the influence of drift on repeatability and gave a compensation method. The existing literature usually reports the thermal-drift effect as a task-space pose error (on the millimeter scale), which when traced back to joint space lies roughly in the range $10^{-3}$--$10^{-2}$\,rad, far smaller, by an order of magnitude or more, than the fault categories discussed below.
+
+  \item \textbf{Motor or reducer replacement without recalibration}: if a replaced component is not re-zeroed during maintenance (for example, KUKA's ``mastering'' or Franka's zero-position reset procedure is not performed), a fixed bias is introduced. For example, in a typical harmonic reducer (reduction ratio $100$--$160$), \emph{the misalignment of a single input tooth} can cause a bias of about $0.04$\,rad at the output, while the influence of coupler reassembly or belt-tension change can be further superimposed. Since this kind of bias depends on the specific maintenance operation, statistical reports are lacking in the academic literature, and this thesis treats it as an \emph{engineering estimate} rather than an empirical magnitude, with a possible amplitude range on the order of $0.05$--$0.3$\,rad.
+
+  \item \textbf{Post-collision encoder misalignment}: an accidental collision may cause a sudden change in the relative position of the joint encoder, the harmonic reducer, or the coupler, producing a sudden bias. Haddadin et al.~\cite{haddadin2017robot} provide a systematic survey of the detection, isolation, and identification of robot collisions, but the literature in this field mainly focuses on \emph{detection and recovery} rather than the magnitude statistics of the residual bias after a collision. This thesis likewise treats the bias caused by a collision as a \emph{design envelope}, with a possible amplitude range extending from $0.1$\,rad to a larger scale depending on the collision severity.
+
+  \item \textbf{Encoder noise and electromagnetic interference}: modern optical encoders, through differential line drivers and shielded designs, already suppress electromagnetic interference strongly. The residual measurement noise (including quantization noise) is about $10^{-3}$\,rad on a typical $17$--$20$-bit absolute encoder, and is zero-mean random, essentially different in statistical character from the first four systematic biases.
+\end{enumerate}
+
+\cref{tab:bias_sources} summarizes the key characteristics of the above five bias sources, and distinguishes them in the table by the two categories \emph{empirical magnitude} and \emph{engineering estimate}, in order to make clear the differences among the sources in their literature support.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Five sources of encoder calibration bias and their characteristics}
+  \label{tab:bias_sources}
+  \footnotesize
+  \begin{adjustbox}{max width=\textwidth}
+  \begin{tabular}{llllc}
+    \toprule
+    Source & Temporal character & Category & Representative magnitude (rad) & Covered \\
+    \midrule
+    Factory calibration residual & Fixed & Empirical magnitude~\cite{kana2022fast} & $\sim 10^{-3}$--$10^{-2}$ & \checkmark \\
+    Temperature drift & Slowly varying & Empirical magnitude~\cite{gong2000nongeometric,vocetka2021influence} & $\sim 10^{-3}$--$10^{-2}$ & $\times$ \\
+    Replacement without recalibration & Fixed & Engineering estimate & $\sim 10^{-1}$ & \checkmark \\
+    Post-collision misalignment & Sudden & Design envelope~\cite{haddadin2017robot} & $\gtrsim 10^{-1}$ & \checkmark \\
+    Encoder noise / EMI & Random & Quantization $+$ noise & $\sim 10^{-3}$ & $\times$ \\
+    \bottomrule
+  \end{tabular}
+  \end{adjustbox}
+\end{table}
+
+\subsection*{Scope of This Thesis}
+
+Among the above five sources, this thesis focuses on \textbf{bias that is constant within an episode} (i.e., sources 1, 3, and 4), covering two experimental settings: \emph{fixed bias} uses the same $\vect{b}$ across all episodes, corresponding to a single known fault; \emph{random bias} samples $\vect{b}$ from a distribution $P(\vect{b})$ at the beginning of each episode, corresponding to a distribution of unknown fault magnitudes. What the two settings have in common is that $\vect{b}$ is invariant within an episode, and both can be modeled as a static latent variable of a POMDP (see \cref{sec:pomdp}); whereas temperature drift and electromagnetic interference require a time-varying latent state, constitute an essentially different POMDP structure, and are left as future work. In the subsequent experiments, the bias is sampled independently for each joint, $b_i \sim \mathcal{U}[0, 0.25\,\text{rad}]$ ($i = 1, \dots, 7$, about $14.3°$), deliberately exceeding the typical magnitude of the factory calibration residual (\cref{tab:bias_sources}), so as to cover the more severe fault scenarios such as maintenance oversight and post-collision misalignment.
+
+For such bias, existing approaches such as offline recalibration~\cite{kana2022fast,gong2000nongeometric} or the traditional fault-tolerant control framework (FDI/FTC)~\cite{blanke2016diagnosis} all have obvious limitations---the former requires interrupting production, and the latter relies on an explicit fault model and targets ``maintaining stability'' rather than ``completing the task,'' with the related discussion given in \cref{ch:related_work}. This thesis takes a different path: rather than detecting or switching after the fact, it lets the policy see various biases already during the training stage, so that it learns to \emph{adapt online} to an unknown calibration bias. The subsequent chapters develop this at both the theoretical and the methodological levels---\cref{sec:causal_chain,sec:pomdp,sec:observability} characterize the essential influence of the bias on the structure of the control problem, and \cref{ch:task_policy} gives the concrete policy-learning method.
+
+\section{Causal Chain: One Source, Three Effects}\label{sec:causal_chain}
+
+In \cref{sec:bias_sources}, we formalized the encoder bias as an additive error $\vect{b}$ in joint space, such that $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$ (see \cref{eq:encoder_bias}). This definition itself only characterizes ``what the bias is,'' but does not yet answer a more crucial question: \emph{how does an encoder bias propagate in the closed-loop control system of a robot and ultimately affect task execution?}
+
+Answering this question is the premise of the subsequent POMDP modeling (\cref{sec:pomdp}). This section proves: \textbf{a single encoder bias $\vect{b}$ produces three observable effects along three mutually independent paths, but these three effects are not independent faults---they are projections of the same latent variable onto different modules.}
+
+To understand how the bias propagates, we first review the standard control and observation structure of a serial manipulator such as the Franka Panda in the bias-free case~\cite{siciliano2010robotics}. As shown in \cref{fig:pipeline_ideal}, within one control cycle the robot has three modules that explicitly depend on the same encoder reading $\vect{q}_{\text{measured}}$: the \textbf{low-level joint PD controller} (which for the Franka Panda runs in the $1$\,kHz real-time loop of its FCI~\cite{haddadin2022franka,frankaemika2024libfranka}) tracks the desired joint angle; the \textbf{task-level OSC controller} maps the task-space error to joint torques through $\mat{J}(\vect{q}_{\text{measured}})$ and $\text{FK}(\vect{q}_{\text{measured}})$; and the \textbf{observation module} returns $\vect{q}_{\text{measured}}$ and $\text{FK}(\vect{q}_{\text{measured}})$ to the high-level policy. The three modules share the same encoder reading---this is precisely the structural reason why a single $\vect{b}$ can corrupt both control and observation simultaneously\footnote{This section assumes that the real robot uses joint servoing executed by a low-level real-time controller; in the simulation environment this low-level loop is simplified by directly setting the initial joint position, with the concrete implementation detailed in \cref{sec:sim_implementation}.}.
+
+% TODO[figure]: refine this data-flow diagram later, see docs/todo.md item 1
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_3_1_pipeline_ideal.png}
+  \caption[Control and observation data flow in the ideal case]{Control and observation data flow of the Franka Panda in the ideal case. The three downstream modules (low-level joint PD, task-level OSC, observation module) all take the same encoder reading $\vect{q}_{\text{measured}}$ as input. This shared dependency is the structural reason why the encoder bias can corrupt both control and observation simultaneously.}
+  \label{fig:pipeline_ideal}
+\end{figure}
+
+\subsection{Effect 1: Initial Position Offset}\label{subsec:effect1}
+
+At the beginning of an episode, the high level usually commands the robot to move to a preset initial pose $\vect{q}_{\text{home}}$. The low-level joint PD controller of the Franka Panda can be approximately modeled as a PD tracking controller with gravity compensation~\cite{siciliano2010robotics}:
+\begin{equation}
+  \vect{\tau}_{\text{joint}} = \mat{K}_p \big(\vect{q}_{\text{target}} - \vect{q}_{\text{measured}}\big)
+  + \mat{K}_d \big(\dot{\vect{q}}_{\text{target}} - \dot{\vect{q}}_{\text{measured}}\big)
+  + \vect{g}(\vect{q}_{\text{measured}}),
+  \label{eq:pd_law}
+\end{equation}
+where $\mat{K}_p, \mat{K}_d \succ 0$ are the stiffness and damping matrices, and $\vect{g}(\cdot)$ is the gravity compensation term. In the scenario of reaching the home pose, $\vect{q}_{\text{target}} = \vect{q}_{\text{home}}$ is constant, so $\dot{\vect{q}}_{\text{target}} = \vect{0}$; furthermore, when the system reaches steady state $\dot{\vect{q}}_{\text{measured}} = \vect{0}$, and the passive torque and the gravity compensation cancel, so~\cref{eq:pd_law} reduces to
+\begin{equation}
+  \mat{K}_p \big(\vect{q}_{\text{target}} - \vect{q}_{\text{measured}}\big) = \vect{0}
+  \quad\Longrightarrow\quad
+  \vect{q}_{\text{measured}} = \vect{q}_{\text{target}}.
+  \label{eq:pd_steady_state}
+\end{equation}
+This is precisely the basic property of a PD controller: in steady state the \emph{measured} value equals the desired value. However, the feedback loop of the PD controller is closed on the encoder reading, and is blind to the \emph{true} joint angle in the physical world. Substituting~\cref{eq:encoder_bias} into~\cref{eq:pd_steady_state} gives:
+\begin{equation}
+  \vect{q}_{\text{true}} + \vect{b} = \vect{q}_{\text{home}}
+  \quad\Longrightarrow\quad
+  \boxed{\;\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}.\;}
+  \label{eq:effect1}
+\end{equation}
+
+\paragraph{Physical meaning} The robot \emph{believes}, at the data level, that it has already reached $\vect{q}_{\text{home}}$, but physically all joints have an offset of magnitude $\vect{b}$ in the direction \emph{opposite} to the bias. This effect is the first step of ``the bias being projected from the digital world into the physical world'': no control command has yet been executed incorrectly, yet the system is already in a wrong physical state. All subsequent motion will start from this corrupted starting point.
+
+\subsection{Effect 2: Control Bias}\label{subsec:effect2}
+
+During the episode, the task-level OSC controller converts the desired end-effector pose $\vect{x}_{\text{target}}$ into joint torques. The standard OSC control law~\cite{siciliano2010robotics,ott2008cartesian} has the form:
+\begin{equation}
+  \vect{\tau}_{\text{osc}}(\vect{q}) = \mat{J}(\vect{q})^\top \mat{\Lambda}(\vect{q})
+    \big[\mat{K}_x \vect{e}_x(\vect{q}) + \mat{K}_v \dot{\vect{e}}_x(\vect{q})\big]
+    + \vect{\tau}_{\text{null}}(\vect{q}) + \vect{g}(\vect{q}),
+  \label{eq:osc_law}
+\end{equation}
+where $\vect{e}_x(\vect{q}) = \vect{x}_{\text{target}} - \text{FK}(\vect{q})$ is the task-space position error, $\mat{\Lambda}(\vect{q}) = (\mat{J}(\vect{q})\mat{M}^{-1}(\vect{q})\mat{J}(\vect{q})^\top)^{-1}$ is the task-space inertia matrix, $\vect{\tau}_{\text{null}}$ is the null-space term, and $\vect{g}$ is the gravity compensation. The control law explicitly depends on five functions of $\vect{q}$: $\mat{J}, \mat{\Lambda}, \text{FK}, \vect{\tau}_{\text{null}}, \vect{g}$.
+
+When a bias is present, the controller reads $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$, so the torque actually applied is $\vect{\tau}^{\text{biased}} = \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}} + \vect{b})$, which differs from the ideal torque $\vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}})$ by $\Delta\vect{\tau}(\vect{b})$. A first-order expansion for a small bias gives:
+\begin{equation}
+  \Delta\vect{\tau}(\vect{b})
+  \;=\; \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}}+\vect{b}) - \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}})
+  \;\approx\; \left.\tfrac{\partial \vect{\tau}_{\text{osc}}}{\partial \vect{q}}\right|_{\vect{q}_{\text{true}}}\!\! \vect{b}.
+  \label{eq:tau_linearization}
+\end{equation}
+Here $\partial \vect{\tau}_{\text{osc}}/\partial \vect{q}$ contains the variation of $\mat{J}$, $\text{FK}$, and $\mat{\Lambda}$ with respect to the joint angle simultaneously, and is nonzero for any nontrivial kinematic structure, so:
+\begin{equation}
+  \forall\, \vect{b} \neq \vect{0}: \quad \Delta\vect{\tau}(\vect{b}) \neq \vect{0}.
+  \label{eq:effect2}
+\end{equation}
+
+\paragraph{Physical meaning} Any nonzero encoder bias causes the controller to output a joint torque that deviates from the ideal value in both magnitude and direction; the first-order expansion~\cref{eq:tau_linearization} shows that the magnitude of the torque bias is approximately linear in $\vect{b}$, and its direction is determined by the gradient of the OSC control law with respect to $\vect{q}$. This effect originates from the difference of $\mat{J}$ and $\text{FK}$ under different joint configurations rather than from any additive noise, so even if $\vect{b}$ is constant within an episode, the torque bias persists along the entire trajectory.
+
+\subsection{Effect 3: Perception Bias}\label{subsec:effect3}
+
+The high-level policy $\pi$ decides the next action based on the state $\vect{o}$ returned by the observation function. Taking a typical task of the Franka Panda as an example, the observation contains at least the following components:
+\begin{equation}
+  \vect{o} = \big(\vect{q}_{\text{measured}},\; \dot{\vect{q}}_{\text{measured}},\; \vect{x}_{\text{ee}}^{\text{FK}},\; \cdots\big),
+  \label{eq:obs_structure}
+\end{equation}
+where $\vect{x}_{\text{ee}}^{\text{FK}} = \text{FK}(\vect{q}_{\text{measured}})$ is the kinematic estimate of the end-effector position. Substituting~\cref{eq:encoder_bias}:
+\begin{align}
+  \vect{q}_{\text{measured}} &= \vect{q}_{\text{true}} + \vect{b}, \label{eq:obs_q_bias}\\
+  \vect{x}_{\text{ee}}^{\text{FK}} &= \text{FK}(\vect{q}_{\text{true}} + \vect{b}) \neq \text{FK}(\vect{q}_{\text{true}}).
+  \label{eq:obs_x_bias}
+\end{align}
+Note that $\dot{\vect{q}}_{\text{measured}} = \dot{\vect{q}}_{\text{true}}$: because $\vect{b}$ is constant within an episode, it vanishes after differentiation with respect to time. Therefore, within an episode, the perception bias acts only on the position-type observations (joint angle and end-effector position), and does not affect the velocity-type observations.
+
+\paragraph{Physical meaning} The robot state that the policy ``sees'' \emph{systematically lies in the position dimension}. The two position-type observations---$\vect{q}_{\text{measured}}$ and $\vect{x}_{\text{ee}}^{\text{FK}}$---appear on the surface to be two independent information sources, but actually share the same corrupted underlying variable, so the policy \emph{cannot} detect the bias by comparing them ($\vect{x}_{\text{ee}}^{\text{FK}}$ is just the forward kinematics of $\vect{q}_{\text{measured}}$, and any ``consistency check'' between the two will always pass). This observation will play a central role in the observability analysis of \cref{sec:observability}.
+
+\subsection{Summary of the Causal Chain}\label{subsec:causal_summary}
+
+Although the three effects arise via different paths (PD feedback, OSC Jacobian/FK, observation function), they \emph{all originate from the same joint-space variable $\vect{b}$}---this is precisely the direct basis for \cref{sec:pomdp} modeling $\vect{b}$ as a \emph{single episode-level latent variable}. \cref{fig:causal_chain} summarizes this coupled structure graphically.
+
+% TODO[figure]: refine this causal-chain diagram later, see docs/todo.md item 2
+\begin{figure}[!htb]
+  \centering
+  \includegraphics[width=0.7\textwidth]{fig_3_2_causal_chain.png}
+  \caption[Causal chain of the encoder bias]{Causal chain of the encoder bias $\vect{b}$: the ``one source, three effects'' structure. A single joint-space latent variable $\vect{b}$ produces three observable effects simultaneously through three structurally independent paths---the feedback loop of the low-level PD controller, the Jacobian and FK in the OSC control law, and the observation function. The three effects are not independent faults, but projections of the same latent variable onto different modules.}
+  \label{fig:causal_chain}
+\end{figure}
+
+\section{POMDP Formalization}\label{sec:pomdp}
+
+\cref{sec:causal_chain} characterized the propagation path of the encoder bias at the physical level. This section translates this physical story into the standard language of the reinforcement learning field: first reviewing the bias-free MDP baseline, then introducing the POMDP model after the bias is introduced, and focusing on the analysis of the episode-level static property of the \emph{latent variable $\vect{b}$}---a property that is the core premise of the methodology of this thesis, and also the starting point of the observability analysis in the subsequent \cref{sec:observability}.
+
+\subsection{The Bias-Free MDP Baseline}\label{subsec:mdp_baseline}
+
+In the ideal case without encoder bias, a robot manipulation task can be modeled as a discrete-time Markov decision process~\cite{sutton2018reinforcement}
+\begin{equation}
+  \mathcal{M}_0 = (\mathcal{S}^{\text{phys}},\,\mathcal{A},\,T_{\text{phys}},\,R,\,\gamma),
+  \label{eq:mdp0}
+\end{equation}
+where the elements of the physical state space $\mathcal{S}^{\text{phys}}$, denoted $\vect{s}^{\text{phys}}$, contain the true kinematic state of the robot and the task-related environment variables:
+\begin{equation}
+  \vect{s}^{\text{phys}} = \big(\vect{q},\;\dot{\vect{q}},\;g,\;\vect{x}_{\text{ee}},\;\vect{x}_{\text{obj}}\big),
+  \label{eq:state_mdp}
+\end{equation}
+that is, the 7-dimensional joint angle, the joint velocity, the gripper opening, the end-effector position, and the position of the task target object. The action space $\mathcal{A} \subseteq \real^7$ is the control command that the high-level policy can issue (the concrete form will be defined in \cref{ch:task_policy}); $T_{\text{phys}}(\vect{s}^{\text{phys}\prime} \mid \vect{s}^{\text{phys}},\,\vect{a})$ is the state transition kernel determined by the physics simulator; $R$ is the sparse task-success reward; and $\gamma \in (0,1)$ is the discount factor. Under this baseline, the system is \emph{fully observable}, i.e., the observation $\vect{o} = \vect{s}^{\text{phys}}$, and the optimal policy takes the form $\pi^\star(\vect{a} \mid \vect{s}^{\text{phys}})$.
+
+\subsection{The POMDP with Encoder Bias}\label{subsec:pomdp_def}
+
+After the encoder bias $\vect{b}$ is introduced, \cref{subsec:effect1,subsec:effect2,subsec:effect3} tell us that the true joint angle $\vect{q}_{\text{true}}$, the true end-effector position $\vect{x}_{\text{ee,true}}$, and the bias $\vect{b}$ itself are all \emph{invisible} to the agent. This degradation in the information structure is precisely the situation described by a partially observable Markov decision process (POMDP)~\cite{kaelbling1998planning}. We formalize the biased problem as the seven-tuple
+\begin{equation}
+  \mathcal{M} = (\mathcal{S},\,\mathcal{A},\,T,\,R,\,\Omega,\,O,\,\gamma).
+  \label{eq:pomdp}
+\end{equation}
+
+\paragraph{State space} On top of the physical state of the baseline MDP, an additional bias component is appended:
+\begin{equation}
+  \vect{s} = (\vect{s}^{\text{phys}},\,\vect{b}), \qquad
+  \vect{s}^{\text{phys}} = \big(\vect{q}_{\text{true}},\,\dot{\vect{q}},\,g,\,\vect{x}_{\text{ee,true}},\,\vect{x}_{\text{obj}}\big),
+  \label{eq:state_pomdp}
+\end{equation}
+where $\vect{q}_{\text{true}}$ and $\vect{x}_{\text{ee,true}}$ are the physically true values, and $\vect{b} \in \real^7$ is the episode-level latent variable.
+
+\paragraph{Observation space and observation function} The observation space $\Omega$ is determined by the perception structure given in \cref{subsec:effect3}. The observation function $O$ is a deterministic mapping\footnote{Here only the basic observation quantities affected by the bias are included, in order to focus the theoretical analysis; the augmented observation space that introduces an external end-effector position observation $\vect{x}_{\text{ee,true}} + \vect{\epsilon}$ will be discussed in \cref{sec:observability}.}
+\begin{equation}
+  \vect{o} = O(\vect{s}) = \big(\underbrace{\vect{q}_{\text{true}} + \vect{b}}_{\text{corrupted}},\,\dot{\vect{q}},\,g,\,\underbrace{\text{FK}(\vect{q}_{\text{true}} + \vect{b})}_{\text{corrupted}},\,\vect{x}_{\text{obj}}\big).
+  \label{eq:obs_func}
+\end{equation}
+Note that the two position-type components in the observation---the joint angle and the end-effector position---are both corrupted by the same $\vect{b}$; the velocity-type and external-perception-type components ($\dot{\vect{q}}$, $g$, $\vect{x}_{\text{obj}}$) are unaffected. The reward $R$ and the discount factor $\gamma$ are the same as in the baseline MDP; the concrete form of the transition kernel $T$ will be derived in the next subsection. Since $\vect{o} \neq \vect{s}$, the policy can only rely on a partial observation, taking the form $\pi(\vect{a} \mid \vect{o})$.
+
+\subsection{Episode-Level Static Property of the Latent Variable \texorpdfstring{$\vect{b}$}{b}}\label{subsec:bias_static}
+
+The core observation of this section is: \textbf{$\vect{b}$ is not a hidden state that evolves step by step as in a classical POMDP, but an episode-level constant}---$\vect{b}$ is sampled once from a distribution $P(\vect{b})$ at the beginning of each episode, and then remains unchanged within the episode, and no action of the agent can change its value. This is essentially different from the time-varying hidden state of a classical POMDP: the latter requires the agent to track a belief through temporal observations, whereas $\vect{b}$, as an episode-level ``environment parameter,'' does not require temporal tracking. This static property brings two corollaries crucial to the methodology of this thesis: (1)~\emph{the bias information is consistent throughout the entire episode}, so in principle no recurrent memory mechanism is needed, and an appropriate observation augmentation can approximately restore the POMDP to an MDP at the level of information structure (see \cref{sec:observability}); (2)~\emph{the optimality of the policy is defined over the distribution $P(\vect{b})$},
+\begin{equation}
+  \pi^\star = \arg\max_{\pi}\; \mathbb{E}_{\vect{b} \sim P(\vect{b}),\,\vect{\tau} \sim \pi} \left[\sum_{t=0}^{\infty} \gamma^t\, R(\vect{s}_t, \vect{a}_t)\right],
+  \label{eq:objective}
+\end{equation}
+that is, the policy must achieve expected optimality over the bias distribution, which directly motivates the \emph{randomized-bias training} of this thesis (see \cref{sec:random_bias}).
+
+\section{Observability Analysis}\label{sec:observability}
+
+\cref{sec:pomdp} has modeled biased robot manipulation as a POMDP, but there is still a key theoretical gap between ``modeling'' and ``solving'': the policy $\pi(\vect{a} \mid \vect{o})$ can only make decisions based on a \emph{single-step} observation $\vect{o}$, so can the true physical state $\vect{q}_{\text{true}}$ and the latent variable $\vect{b}$ be uniquely recovered from a single $\vect{o}$? The answer to this question determines whether the POMDP is ``solvable'' in terms of information structure.
+
+This section gives two complementary conclusions: \textbf{Proposition~\ref{prop:non_identifiable}} proves that relying only on the basic observation given by \cref{eq:obs_func} \emph{cannot} distinguish different $(\vect{q}_{\text{true}}, \vect{b})$; \textbf{Proposition~\ref{prop:identifiable}} then proves that if an external position observation independent of the encoder is further introduced, $(\vect{q}_{\text{true}}, \vect{b})$ can be uniquely recovered. These two propositions theoretically and precisely predict the success and the failure of the observation-space ablation experiment in \cref{sec:exp_ablation}.
+
+\subsection{Proposition 1: Non-Identifiability under the Basic Observation}\label{subsec:unidentifiable}
+
+\begin{proposition}[Non-identifiability under the basic observation]\label{prop:non_identifiable}
+Let the observation function $O$ of the POMDP be given by \cref{eq:obs_func}:
+\[
+  \vect{o} = O(\vect{s}) = \big(\vect{q}_{\text{true}} + \vect{b},\,\dot{\vect{q}},\,g,\,\text{FK}(\vect{q}_{\text{true}} + \vect{b}),\,\vect{x}_{\text{obj}}\big).
+\]
+For any fixed observation $\vect{o}$, there exist infinitely many pairs $(\vect{q}_{\text{true}}, \vect{b})$ producing that observation. Therefore, $O$ is not injective in $(\vect{q}_{\text{true}}, \vect{b})$, and $(\vect{q}_{\text{true}}, \vect{b})$ cannot be uniquely determined from $\vect{o}$.
+\end{proposition}
+
+\begin{proof}
+Consider the two components of the observation $\vect{o}$ related to $(\vect{q}_{\text{true}}, \vect{b})$: the joint reading $\vect{q}_{\text{true}} + \vect{b}$ and the end-effector estimate $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$. Both depend only on the \emph{sum} $\vect{q}_{\text{true}} + \vect{b}$, and not on $\vect{q}_{\text{true}}$ or $\vect{b}$ individually.
+
+Take any $\vect{\delta} \in \real^7$, and construct another pair $(\tilde{\vect{q}}, \tilde{\vect{b}}) = (\vect{q}_{\text{true}} - \vect{\delta},\,\vect{b} + \vect{\delta})$; then
+\[
+  \tilde{\vect{q}} + \tilde{\vect{b}} = (\vect{q}_{\text{true}} - \vect{\delta}) + (\vect{b} + \vect{\delta}) = \vect{q}_{\text{true}} + \vect{b},
+\]
+so $\text{FK}(\tilde{\vect{q}} + \tilde{\vect{b}}) = \text{FK}(\vect{q}_{\text{true}} + \vect{b})$. The remaining observation components ($\dot{\vect{q}}$, $g$, $\vect{x}_{\text{obj}}$) do not depend on $(\vect{q}_{\text{true}}, \vect{b})$, and therefore remain unchanged under the transformation.
+
+In summary, for any $\vect{\delta}$, the old and the new pairs $(\vect{q}_{\text{true}}, \vect{b})$ produce exactly the same observation $\vect{o}$. Since $\vect{\delta}$ is arbitrary, there exist infinitely many pairs $(\vect{q}_{\text{true}}, \vect{b})$ compatible with a given $\vect{o}$.\end{proof}
+
+Proposition~\ref{prop:non_identifiable} shows that there is a \emph{translational symmetry} of arbitrary direction between $(\vect{q}_{\text{true}}, \vect{b})$: adjusting the true joint angle and the bias simultaneously along the direction $\vect{\delta}$ leaves the observation \emph{exactly identical}. The fundamental reason lies in the fact revealed in \cref{subsec:effect3}---the two position-type observation components, though seemingly independent, actually share the corrupted $\vect{q}_{\text{measured}}$, are always self-consistent with each other, and cannot provide any additional identifying information. Therefore, any policy that relies only on a single-step basic observation is in principle unable to distinguish different $(\vect{q}_{\text{true}}, \vect{b})$, and thus unable to make a targeted response to different biases.
+
+\subsection{Proposition 2: Observation Augmentation Restores Identifiability}\label{subsec:identifiable_augmented}
+
+The crux of Proposition~\ref{prop:non_identifiable} is that all position-type observations pass through the same corrupted encoder channel. To break the translational symmetry, a position observation \emph{independent of the encoder} must be introduced. A natural choice is an external localization system---such as OptiTrack motion capture, or an ArUco visual marker together with an Intel RealSense D455, etc.---which does not depend on the robot's own joint encoders and directly measures the true position of the end-effector in the world coordinate frame. Such a measurement can be uniformly modeled as
+\begin{equation}
+  \vect{o}_{\text{real}} = \text{FK}(\vect{q}_{\text{true}}) + \vect{\epsilon}, \qquad \vect{\epsilon} \sim \mathcal{N}(\vect{0},\,\sigma^2 \mat{I}_3),
+  \label{eq:real_tcp}
+\end{equation}
+where $\sigma$ characterizes the precision of the localization system. Appending this observation component to the basic observation function $O$ yields the augmented observation space $\Omega'$ and the augmented observation function:
+\begin{equation}
+  \vect{o}' = O'(\vect{s}) = \big(\underbrace{\vect{q}_{\text{true}} + \vect{b},\,\dot{\vect{q}},\,g,\,\text{FK}(\vect{q}_{\text{true}} + \vect{b}),\,\vect{x}_{\text{obj}}}_{\vect{o}},\,\vect{o}_{\text{real}}\big).
+  \label{eq:obs_augmented}
+\end{equation}
+
+\begin{proposition}[Identifiability under the augmented observation]\label{prop:identifiable}
+Let the augmented observation function $O'$ be given by \cref{eq:obs_augmented}, and let the external localization be noise-free ($\vect{\epsilon} = \vect{0}$). If $\text{FK}$ is injective in a neighborhood of the current configuration $\vect{q}_{\text{true}}$\footnote{For a 7-DoF redundant manipulator such as the Franka Panda, $\text{FK}$ is not globally injective (there is a 1-DoF null space). However, within the actual operating region and away from singular configurations, $\text{FK}$ is locally injective; combining it with the velocity observation $\dot{\vect{q}}$ can further eliminate the null-space ambiguity. The discussion of this section holds under this assumption.}, then $(\vect{q}_{\text{true}}, \vect{b})$ can be uniquely determined from $\vect{o}'$.
+\end{proposition}
+
+\begin{proof}
+Under the condition $\vect{\epsilon} = \vect{0}$, by \cref{eq:real_tcp}, $\vect{o}_{\text{real}} = \text{FK}(\vect{q}_{\text{true}})$. By the assumption that $\text{FK}$ is locally injective, there exists a local inverse function $\text{FK}^{-1}$ such that
+\begin{equation}
+  \vect{q}_{\text{true}} = \text{FK}^{-1}(\vect{o}_{\text{real}}).
+  \label{eq:recover_q}
+\end{equation}
+Since $\vect{q}_{\text{true}}$ is now known, and since $\vect{o}$ contains the component $\vect{q}_{\text{true}} + \vect{b}$, one can directly solve for
+\begin{equation}
+  \vect{b} = (\vect{q}_{\text{true}} + \vect{b}) - \vect{q}_{\text{true}}.
+  \label{eq:recover_b}
+\end{equation}
+Therefore $(\vect{q}_{\text{true}}, \vect{b})$ is uniquely determined by $\vect{o}'$.\end{proof}
+
+Compared with Proposition~\ref{prop:non_identifiable}, the key difference of Proposition~\ref{prop:identifiable} is that $\vect{o}_{\text{real}}$ bypasses the corrupted encoder channel and directly provides an ``independent observation'' that depends only on $\vect{q}_{\text{true}}$ (rather than $\vect{q}_{\text{true}} + \vect{b}$), thereby \emph{breaking} the translational symmetry used in the proof of Proposition~\ref{prop:non_identifiable}. From an information-theoretic perspective, $\vect{o}_{\text{real}}$ is linearly independent of the existing position-type observations, and exactly compensates for the previously missing one-dimensional identifying direction. Its geometric intuition is shown in \cref{fig:identifiability}.
+
+\begin{figure}[!htb]
+  \centering
+  \begin{tikzpicture}[
+    >={Stealth[length=2mm]},
+    font=\small,
+    axis/.style={->, thick},
+    eqline/.style={red!70!black, thick, dashed},
+    realline/.style={blue!70!black, thick},
+    candpt/.style={fill=red!70!black, draw=red!70!black, circle, inner sep=1.5pt},
+    soln/.style={fill=green!50!black, draw=green!30!black, line width=0.8pt, circle, inner sep=2.5pt},
+  ]
+    % ===== Left panel: Prop 1 =====
+    \begin{scope}[shift={(0,0)}]
+      \draw[axis] (0, 0) -- (4.7, 0) node[right, font=\scriptsize] {$\vect{q}_\text{true}$};
+      \draw[axis] (0, 0) -- (0, 4.5) node[above, font=\scriptsize] {$\vect{b}$};
+
+      \draw[eqline] (0.5, 3.5) -- (3.5, 0.5);
+      \node[font=\scriptsize, color=red!70!black, anchor=west] at (3.55, 0.4) {$\vect{q}_\text{true} + \vect{b} = c$};
+
+      \node[candpt] at (1.0, 3.0) {};
+      \node[candpt] at (1.7, 2.3) {};
+      \node[candpt] at (2.5, 1.5) {};
+      \node[candpt] at (3.2, 0.8) {};
+
+      \node[anchor=north, font=\bfseries\footnotesize] at (2.3, -0.4) {(a) Basic observation};
+      \node[anchor=north, font=\scriptsize, align=center] at (2.3, -0.95) {All $(\vect{q}_\text{true}, \vect{b})$ on the equivalence line\\ produce the same observation $\vect{o}$ (Proposition~\ref{prop:non_identifiable})};
+    \end{scope}
+
+    % ===== Right panel: Prop 2 =====
+    \begin{scope}[shift={(7.5,0)}]
+      \draw[axis] (0, 0) -- (4.7, 0) node[right, font=\scriptsize] {$\vect{q}_\text{true}$};
+      \draw[axis] (0, 0) -- (0, 4.5) node[above, font=\scriptsize] {$\vect{b}$};
+
+      \draw[eqline] (0.5, 3.5) -- (3.5, 0.5);
+      \node[font=\scriptsize, color=red!70!black, anchor=west] at (3.55, 0.4) {$\vect{q}_\text{true} + \vect{b} = c$};
+
+      \draw[realline] (1.7, -0.05) -- (1.7, 4.2);
+      \node[font=\scriptsize, color=blue!70!black, anchor=south, align=center] at (1.7, 4.2) {$\vect{q}_\text{true} = \text{FK}^{-1}(\vect{o}_\text{real})$};
+
+      \node[soln] (sol) at (1.7, 2.3) {};
+      \node[font=\scriptsize, color=green!30!black, anchor=west] at (2.0, 2.4) {Unique solution};
+
+      \node[anchor=north, font=\bfseries\footnotesize] at (2.3, -0.4) {(b) Augmented observation (with $\vect{o}_\text{real}$)};
+      \node[anchor=north, font=\scriptsize, align=center] at (2.3, -0.95) {The independent constraint breaks the symmetry,\\ intersecting at a unique point (Proposition~\ref{prop:identifiable})};
+    \end{scope}
+  \end{tikzpicture}
+  \caption{Geometric illustration of identifiability. The horizontal axis $\vect{q}_\text{true}$ and the vertical axis $\vect{b}$ are an abstract one-dimensional representation. \textbf{(a)} When relying only on the basic observation, all pairs $(\vect{q}_\text{true}, \vect{b})$ satisfying $\vect{q}_\text{true} + \vect{b} = c$ (red dashed line) produce the same observation $\vect{o}$; the translational symmetry along the direction $\vect{\delta}$ makes the original problem non-identifiable. \textbf{(b)} After introducing an independent external position observation, by \cref{eq:recover_q}, $\vect{q}_\text{true}$ is locked to $\text{FK}^{-1}(\vect{o}_\text{real})$ (blue solid line); the intersection of this constraint with the equivalence line is unique (green dot), i.e., the identifiable solution given by \cref{prop:identifiable}. When $\sigma > 0$, the blue line becomes a ``band'' of finite width, and uniqueness degenerates into a maximum-likelihood estimate over the posterior---this is precisely the geometric origin of the ``averaging compensation'' in \cref{subsec:identifiability_vs_solvability}.}
+  \label{fig:identifiability}
+\end{figure}
+
+\subsection{Identifiability \texorpdfstring{$\neq$}{!=} Solvability}\label{subsec:identifiability_vs_solvability}
+
+Proposition~\ref{prop:identifiable} is a conclusion at the \emph{information-theoretic} level: the augmented observation $\vect{o}'$ can in principle distinguish different $(\vect{q}_{\text{true}}, \vect{b})$. But this is not equivalent to ``the problem has returned to the bias-free case''---the bias has not \emph{disappeared}, it has only changed from \emph{invisible} to \emph{inferable}. The control bias proved in \cref{subsec:effect2} and the initial position offset of \cref{subsec:effect1} still exist: the physical transition kernel $T_{\text{phys}}$ of the POMDP is \emph{exactly the same} before and after the introduction of $\vect{o}_{\text{real}}$, and what observation augmentation changes is the \emph{information structure}, not the \emph{dynamics}.
+
+Therefore, the rigorous meaning of ``the POMDP is approximately restored to an MDP'' is: there exists a family of policies $\pi(\vect{a} \mid \vect{o}')$ acting on $\vect{o}'$ whose Bellman-equation solution coincides with the optimal policy of the original POMDP; the MDP state here still contains $\vect{b}$, and the optimal policy is a function \emph{conditioned on $\vect{b}$}:
+\begin{equation}
+  \pi^\star(\vect{a} \mid \vect{o}') \;=\; \pi^\star\big(\vect{a} \,\big|\, \vect{q}_{\text{true}},\,\vect{b}\big).
+  \label{eq:conditional_policy}
+\end{equation}
+For different $\vect{b}$, $\pi^\star$ must output \emph{different} compensating actions. In the realistic case of $\vect{\epsilon} > 0$, since the noise makes it possible for different $(\vect{q}_{\text{true}}, \vect{b})$ to produce almost the same $\vect{o}'$, the optimal action degenerates into the expected optimum over the posterior conditioned on the observation, that is, a kind of ``\textbf{averaging compensation}''---the policy outputs a compromise action over all biases compatible with the observation.
+
+This analysis brings two insights crucial to the subsequent chapters. \emph{First}, for a single policy to cover the entire $P(\vect{b})$, it must be exposed to the diversity of the bias distribution during training---training only under a fixed $\vect{b}$ leads to ``single-point conditioning'': the policy learns the compensation amount under a specific bias, and \emph{over-compensates} on other biases (especially the fault-free case $\vect{b}=\vect{0}$). This is precisely the theoretical basis of the \emph{randomized-bias training} of \cref{sec:random_bias}. \emph{Second}, observation augmentation provides the \emph{feasibility} of training but does not guarantee its \emph{sufficiency}---whether ``information-theoretically identifiable'' can be turned into ``actually learnable'' still depends on the data distribution, the reward density, and the optimization capability. The fixed-bias experiment of \cref{sec:exp_h2} will provide direct empirical support: a policy trained under a fixed $b_i = 0.2\,\text{rad}$ on all joints has a significantly lower success rate in the zero-bias test than a policy obtained by randomized-bias training, which is precisely the over-compensation phenomenon caused by single-point conditioning (the concrete numbers are given in \cref{sec:exp_h2}).
+
+\subsection{Discussion: Noise, Configuration Information, and Correspondence with Experiments}\label{subsec:observability_discussion}
+
+\paragraph{Influence of localization noise} Proposition~\ref{prop:identifiable} assumes $\vect{\epsilon} = \vect{0}$. In the practical case of $\sigma > 0$, $\vect{q}_{\text{true}}$ and $\vect{b}$ can only be \emph{approximately} recovered: as $\sigma \to 0$ the identification precision tends to be perfect; as $\sigma$ increases the identification error increases accordingly; in the extreme, if $\sigma$ is so large that the signal-to-noise ratio of $\vect{o}_{\text{real}}$ falls below the typical amplitude of $\vect{b}$ itself, the external observation loses its effect, and the system degenerates back to the non-identifiable case described by Proposition~\ref{prop:non_identifiable}. The $\sigma = 5$\,mm adopted in this thesis corresponds to the localization precision of an ArUco visual marker together with a D455 depth camera at a typical working distance, which is both easy to realize in practice and sufficient to support the robust response of the policy to the bias in \cref{ch:task_policy}.
+
+\paragraph{Why the biased proprioception is still retained} The biased $\vect{q}_{\text{measured}}$ still encodes the joint configuration of the arm---singularity proximity, joint-limit margin, the null-space direction in the $7$-DoF redundancy, etc.---and this information cannot be provided by the three-dimensional $\vect{o}_{\text{real}}$ alone, which constitutes the necessity of retaining the proprioception channel. The complementary design-level reasons (information completeness and runtime fault tolerance) are given in \cref{subsec:obs_keep_contam}.
+
+\paragraph{Correspondence with the ablation experiment} The two propositions of this section are not purely theoretical deductions; they directly predict the results of the observation-space ablation experiment in \cref{sec:exp_ablation}. The ablation experiment contrasts the full $24$-dimensional observation used in \cref{ch:task_policy} with an $18$-dimensional variant that \emph{removes} the independent external TCP $\vect{o}_\text{real}$---the former corresponds to the identifiable case of Proposition~\ref{prop:identifiable}, where the policy should remain robust over the full bias range; the latter corresponds to the non-identifiable case of Proposition~\ref{prop:non_identifiable}, where the policy performance is expected to degrade severely under bias. This correspondence both provides a verifiable theoretical basis for the observation-space design of this thesis, and conversely confirms that the two propositions are not a mere formal exercise, but an accurate characterization of the essence of the problem.
+
+\section{Simulation Implementation and Equivalence Analysis}\label{sec:sim_implementation}
+
+The analysis of the previous four sections has all unfolded at the abstract level: \cref{sec:causal_chain} gave the physical causal chain of bias propagation in control and observation, \cref{sec:pomdp} formalized it as a POMDP, and \cref{sec:observability} analyzed the identifiability at the level of information structure. The task of this section is to \emph{ground} these abstract conclusions---to faithfully reproduce, in a MuJoCo-based simulation environment, the three effects described in \cref{sec:causal_chain}, and to rigorously argue that the simulation implementation is equivalent to the original physical mechanism in the relevant observation quantities.
+
+\paragraph{Why the /joint\_states injection cannot simply be reused} In a ROS environment, a common fault-injection practice is to directly add a bias to the joint angles published on the \texttt{/joint\_states} topic~\cite{ma2023case}. This is concise and effective in the standard ROS architecture where ``the controller subscribes to \texttt{/joint\_states} for feedback,'' because once the bias enters the topic it naturally propagates to all downstream readers. However, neither the simulation nor the real robot of this thesis \emph{conforms} to this premise: the OSC controller in the simulation directly reads the joint angles from MuJoCo's \texttt{data.qpos}, with no \texttt{/joint\_states} topic as an intermediary at all; the impedance controller of the HIL-SERL architecture on the real robot reads the robot state through direct C++ memory access via the \texttt{FrankaStateHandle}, likewise bypassing ROS topic communication (see \cref{ch:real_chapter}). In both cases, injecting the bias only on \texttt{/joint\_states} cannot affect the controller or the observation module---an \emph{equivalent injection scheme} decoupled from the coupling mode of the underlying data flow needs to be designed. This section first gives the implementation-independent sufficient conditions, and then describes the concrete implementation under MuJoCo on this basis.
+
+\subsection{Sufficient Conditions for Fault Injection}\label{subsec:injection_sufficient}
+
+\begin{proposition}[Sufficient conditions for fault injection]\label{prop:injection}
+Suppose a fault-injection implementation satisfies the following two conditions:
+\begin{enumerate}
+  \item[\textbf{\textup{(C1)}}] \textbf{Control condition}: every time the control law computes the joint torque, the joint-angle value used equals $\vect{q}_{\text{true}} + \vect{b}$;
+  \item[\textbf{\textup{(C2)}}] \textbf{Observation condition}: every time the observation module returns the state, the joint-angle component equals $\vect{q}_{\text{true}} + \vect{b}$, and the end-effector pose component equals $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$.
+\end{enumerate}
+Then this implementation faithfully reproduces the three effects defined in \cref{sec:causal_chain}---the initial position offset, the control bias, and the perception bias.
+\end{proposition}
+
+\begin{proof}
+\emph{Effect 2 (control bias)}: the biased torque under the definition of \cref{subsec:effect2} is $\vect{\tau}^{\text{biased}} = \vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}} + \vect{b})$. Condition (C1) guarantees that the value used when the control law is computed is exactly $\vect{q}_{\text{true}} + \vect{b}$, so the output torque is exactly $\vect{\tau}^{\text{biased}}$, fully consistent with the definition of that subsection.
+
+\emph{Effect 3 (perception bias)}: \cref{subsec:effect3} requires the joint component in the observation $\vect{o}$ to be $\vect{q}_{\text{true}} + \vect{b}$ and the end-effector pose component to be $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$, which is exactly the content of condition (C2).
+
+\emph{Effect 1 (initial position offset)}: the steady-state condition $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ of \cref{subsec:effect1} is a direct corollary of applying condition (C1) to the low-level PD controller---when the PD controller tracks the target with $\vect{q}_{\text{target}} = \vect{q}_{\text{home}}$ and uses $\vect{q}_{\text{true}} + \vect{b}$ as feedback, the steady state must stop at $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$. If the low-level PD controller is not explicitly run in the simulation (see \cref{subsec:sim_effect1}), directly initializing the joint position with $\vect{q}_{\text{true}} = \vect{q}_{\text{home}} - \vect{b}$ achieves the same steady-state effect.\end{proof}
+
+\cref{prop:injection} abstracts the question of ``whether the fault injection is faithful'' into two \emph{architecture-independent} conditions: regardless of whether the lower layer is implemented through a ROS topic, C++ memory access, or the simulation's data structure, as long as (C1) and (C2) hold, the injection is equivalent. This provides a unified correctness basis for the simulation implementation of this section and the real-robot B+D dual-injection scheme of \cref{ch:real_chapter}.
+
+\subsection{Concrete Implementation in MuJoCo}\label{subsec:sim_implementation}
+
+The simulation of this thesis is built on MuJoCo 3.0, with a robot control cycle of $10$\,Hz and an embedded $500$\,Hz physics simulation. The lower layer does not run an explicit PD servo, but directly uses the current \texttt{data.qpos} as the true joint state; the upper-level OSC controller obtains the Jacobian and the end-effector position by calling \texttt{mujoco.mj\_jacSite} and \texttt{data.site\_xpos}. We implement the three effects respectively according to the two conditions of \cref{prop:injection}.
+
+\subsubsection*{Effect 1: Implementation of the Initial Position Offset}\label{subsec:sim_effect1}
+
+In the \texttt{reset\_robot} stage, we do not explicitly simulate the transient of the low-level PD controller, but directly set MuJoCo's joint position to the offset steady-state value:
+\begin{equation}
+  \vect{q}_{\text{data.qpos}}^{\text{reset}} \;\leftarrow\; \vect{q}_{\text{home}} - \vect{b}.
+  \label{eq:sim_reset}
+\end{equation}
+By \cref{eq:effect1}, this is exactly the steady-state end point of the low-level PD controller when the feedback is corrupted by the bias. This simplification skips the tens to hundreds of milliseconds of PD transient on the real robot, but is strictly consistent with the real robot at the \emph{steady-state end point}. Since this thesis is concerned with the task execution within an episode (rather than the transient during initialization), this simplification has no influence on the subsequent analysis.
+
+\subsubsection*{Effect 2: Implementation of the Control Bias}\label{subsec:sim_effect2}
+
+Condition (C1) requires the OSC to use $\vect{q}_{\text{true}} + \vect{b}$ rather than $\vect{q}_{\text{true}}$ when computing the torque. Since \texttt{opspace()} directly reads the joint state and the Jacobian from \texttt{data.qpos} and the \texttt{mj\_forward} result derived from it, we adopt a three-step pattern of ``\textbf{temporary replacement---computation---restoration}'': at the beginning of each physics substep, the arm joint components in \texttt{data.qpos} are first replaced with $\vect{q}_{\text{true}} + \vect{b}$ and \texttt{mj\_forward} is called to update the internal derived quantities; then \texttt{opspace()} is called to compute the torque; then \texttt{data.qpos} is restored to the true $\vect{q}_{\text{true}}$ and \texttt{mj\_forward} is called again; and finally the computed torque is written into \texttt{data.ctrl} and the physics simulation is driven by \texttt{mj\_step}. The complete procedure is given in \cref{alg:sim_step}.
+
+\begin{algorithm}[htbp]
+  \caption{A single control step with encoder bias ($N$ physics substeps)}
+  \label{alg:sim_step}
+  \begin{algorithmic}[1]
+    \Require true joint position $\vect{q}_{\text{true}}$, desired end-effector pose $\vect{x}_{\text{target}}$, bias $\vect{b}$
+    \For{$k = 1$ \textbf{to} $N$}
+      \State $\vect{q}_{\text{save}} \gets \texttt{data.qpos}$ \Comment{back up the true joint position}
+      \State $\texttt{data.qpos} \gets \vect{q}_{\text{save}} + \vect{b}$ \Comment{inject the bias}
+      \State $\texttt{mj\_forward(model, data)}$ \Comment{update derived quantities (Jacobian/FK)}
+      \State $\vect{\tau} \gets \texttt{opspace}(\texttt{data}, \vect{x}_{\text{target}})$ \Comment{compute torque with the biased $\vect{q}$}
+      \State $\texttt{data.qpos} \gets \vect{q}_{\text{save}}$ \Comment{restore the true joint position}
+      \State $\texttt{mj\_forward(model, data)}$
+      \State $\texttt{data.ctrl[arm]} \gets \vect{\tau}$ \Comment{the true system applies the biased torque}
+      \State $\texttt{mj\_step(model, data)}$ \Comment{advance the physics simulation}
+    \EndFor
+  \end{algorithmic}
+\end{algorithm}
+
+The equivalence of this pattern relies on a simple observation: \texttt{opspace} is a \emph{pure function} of the geometric quantities ($\mat{J}$, $\text{FK}$, $\mat{\Lambda}$) derived from \texttt{data.qpos} via \texttt{mj\_forward}, and its output is fully determined by the \texttt{data.qpos} at the time of the call. Lines 3--5 of the algorithm guarantee that when \texttt{opspace} is called, the joint components are exactly $\vect{q}_{\text{true}} + \vect{b}$, so the returned torque equals exactly $\vect{\tau}_{\text{osc}}(\vect{q}_{\text{true}} + \vect{b})$---which is precisely the requirement of condition (C1) of \cref{prop:injection}. The subsequent restoration operation does not change the torque value already computed (it has been saved to a local variable), and merely lets the physics simulation execute again based on the true state. Observed from the outside, this procedure corresponds exactly to the real-robot situation of ``the OSC directly reads the corrupted encoder, outputs a biased torque, and the true physics evolves according to this torque.''
+
+\subsubsection*{Effect 3: Implementation of the Perception Bias}\label{subsec:sim_effect3}
+
+Condition (C2) requires the observation module to return the corrupted joint angle and end-effector pose. In \texttt{get\_robot\_state()}, we directly construct $\vect{q}_{\text{measured}} = \vect{q}_{\text{true}} + \vect{b}$, and compute $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$ through one temporary replacement:
+\begin{equation}
+  \vect{o}_{\text{joint}} = \vect{q}_{\text{true}} + \vect{b}, \qquad
+  \vect{o}_{\text{ee}} = \text{FK}(\vect{q}_{\text{true}} + \vect{b}),
+  \label{eq:sim_obs}
+\end{equation}
+where $\text{FK}(\vect{q}_{\text{true}} + \vect{b})$ is obtained by the same trick of temporarily replacing \texttt{data.qpos} with $\vect{q}_{\text{true}} + \vect{b}$, calling \texttt{mj\_forward}, reading \texttt{data.site\_xpos}, and then restoring the true value, consistent with the replace-restore pattern of \cref{alg:sim_step}, with correctness guaranteed by the same ``pure function dependency'' argument.
+
+\subsection{External Sensor Simulation}\label{subsec:sim_external}
+
+In addition to the bias-corrupted observation components above, Proposition~\ref{prop:identifiable} of \cref{sec:observability} also requires the introduction of an external position observation $\vect{o}_{\text{real}}$ independent of the encoder. In the simulation we model it as
+\begin{equation}
+  \vect{o}_{\text{real}} \;=\; \vect{x}_{\text{ee,true}} + \vect{\epsilon},
+  \qquad \vect{\epsilon} \sim \mathcal{N}(\vect{0},\,\sigma^2 \mat{I}_3),\; \sigma = 5\,\text{mm},
+  \label{eq:sim_real_tcp}
+\end{equation}
+where $\vect{x}_{\text{ee,true}}$ is read directly from MuJoCo's true $\text{FK}$ (i.e., the value of \texttt{data.site\_xpos} under the true \texttt{data.qpos}, without bias), and $\vect{\epsilon}$ is an isotropic Gaussian noise independent of the time step and the bias. As already discussed in \cref{sec:observability}, $\sigma = 5$\,mm corresponds to the external localization precision of an ArUco visual marker together with an Intel RealSense D455 at a typical working distance. The position of the task target object (such as a block) is assumed to be measured by an overhead external camera, is not affected by the encoder bias, and is read directly from MuJoCo's object sensor in the simulation.
+
+\subsection{Main Gaps between Simulation and Reality}\label{subsec:sim_real_gap}
+
+The MuJoCo simulation described in this section is an \emph{idealized approximation} of the real industrial robot system, with the main gaps including: (i)~Effect 1 skips the transient of the low-level PD controller, whereas on the real robot the $1$\,kHz servo driven by \texttt{libfranka} has a finite response time of tens to hundreds of milliseconds; (ii)~the simulation uses the OSC control law, whereas the real-robot HIL-SERL architecture uses a Cartesian impedance controller, and the equivalence of the two will be rigorously analyzed in \cref{subsec:osc_impedance}; (iii)~MuJoCo's rigid-body dynamics do not include real effects such as joint friction, motor delay, and cable influence; (iv)~this thesis only considers fixed and random bias, and does not yet model time-varying bias types such as temperature drift and electromagnetic noise.
+
+These gaps \emph{all point in the direction of making the bias effect weaker in the simulation}---friction and delay would further worsen the influence of the bias on the control precision on the real robot, and time-varying bias would increase the identification difficulty on the real robot. Therefore the simulation can be regarded as a conservative test platform: if a method can cope with the bias in the simulation, then coping with it is \emph{even more necessary} on the real robot, and the effect is usually \emph{even more significant}. The complete 8-item comparison table and the concrete implementation of the real-robot injection scheme will be given in \cref{ch:real_chapter}, and are not elaborated on here.
